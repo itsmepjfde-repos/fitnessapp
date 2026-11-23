@@ -100,6 +100,7 @@ export interface PortalRepository {
     checkInId: string;
     workoutKey?: WorkoutKey;
     allDone?: boolean;
+    workouts?: Record<WorkoutKey, boolean>;
   }): Promise<CheckInEntry | null>;
   deleteCheckIn(checkInId: string): Promise<{ deleted: CheckInEntry } | null>;
   getOutreachMeta(): Promise<{

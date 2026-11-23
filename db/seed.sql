@@ -13,7 +13,7 @@ USE dannysthenics;
 INSERT INTO studio_settings (setting_key, setting_value)
 VALUES (
   'outreach_template',
-  'Hey [First Name]! Coach Danny noticed you missed this week at DANNY''STHENICS. We have a new agility session ready for you tomorrow! Tap to reserve your spot: dannysthenics.co/book'
+  'Hey [First Name]! Coach Danny noticed you missed this week at DANNY''STHENICS. Please let me know if you have any questions or concerns. We hope to see you back in the studio soon!'
 )
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
 

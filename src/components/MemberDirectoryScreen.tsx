@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  BellOff,
   Check,
   CheckSquare,
   Clock,
@@ -10,7 +9,6 @@ import {
   MessageSquare,
   Search,
   Send,
-  TrendingUp,
   UserPlus,
   Users,
   X,
@@ -53,22 +51,12 @@ export function MemberDirectoryScreen({
     const atRiskList = members.filter((m) => m.status === 'at_risk');
     const inactiveList = members.filter((m) => m.status === 'inactive');
     const activePct = total > 0 ? ((activeList.length / total) * 100).toFixed(1) : '0.0';
-    const avgLull =
-      atRiskList.length > 0
-        ? (
-            atRiskList.reduce((acc, m) => acc + m.daysSinceLastVisit, 0) /
-            atRiskList.length
-          ).toFixed(1)
-        : '0.0';
-    const capacityPct = Math.min(100, Math.round((total / 20) * 100));
     return {
       total,
       activeCount: activeList.length,
       atRiskCount: atRiskList.length,
       inactiveCount: inactiveList.length,
       activePct,
-      avgLull,
-      capacityPct,
       atRiskIds: atRiskList.map((m) => m.id),
     };
   }, [members]);
@@ -182,16 +170,16 @@ export function MemberDirectoryScreen({
         </div>
       )}
 
-      {/* 4-Column Directory KPI Stat Grid */}
+      {/* 4-Column Member Summary Grid */}
       <section
         aria-label="Member directory metrics"
         className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
       >
-        {/* Directory Registry */}
+        {/* Total Members */}
         <div className="rounded-lg border border-white/[0.08] bg-[#141824] p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9AA7B8]">
-              Directory Registry
+              Total Members
             </span>
             <Users className="w-4 h-4 text-[#64748B]" />
           </div>
@@ -199,13 +187,8 @@ export function MemberDirectoryScreen({
             <span className="font-mono text-4xl font-bold tabular-nums text-[#DFE2EF]">
               {stats.total}
             </span>
-            <span className="font-mono text-xs font-medium text-[#4EDEA3]">
-              +4 this mo
-            </span>
+            <span className="text-sm text-[#9AA7B8]">members</span>
           </div>
-          <p className="mt-3 text-xs text-[#9AA7B8]">
-            Roster capacity: <span className="font-mono tabular-nums text-[#DFE2EF]">{stats.capacityPct}%</span> utilized
-          </p>
         </div>
 
         {/* Currently Active */}
@@ -225,41 +208,38 @@ export function MemberDirectoryScreen({
             <span className="text-sm text-[#9AA7B8]">athletes</span>
           </div>
           <p className="mt-3 text-xs text-[#9AA7B8] inline-flex items-center gap-1.5">
-            <TrendingUp className="w-3.5 h-3.5 text-[#4EDEA3]" />
-            Rolling 7-day adherence: High
+            <Check className="w-3.5 h-3.5 text-[#4EDEA3]" />
+            Visited within the last 7 days
           </p>
         </div>
 
-        {/* At-Risk (1-2 Wks) */}
+        {/* Needs Follow-Up */}
         <div className="rounded-lg border border-white/[0.08] bg-[#141824] p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-[#C3F400]">
-              At-Risk (1–2 Wks)
+              Needs Follow-Up
             </span>
             <span className="font-mono text-[11px] font-semibold text-[#C3F400] bg-[#C3F400]/12 border border-[#C3F400]/30 px-2 py-0.5 rounded whitespace-nowrap">
-              High Priority
+              Action needed
             </span>
           </div>
           <div className="mt-4 flex items-baseline gap-2.5">
             <span className="font-mono text-4xl font-bold tabular-nums text-[#C3F400]">
               {stats.atRiskCount}
             </span>
-            <span className="text-sm text-[#C3F400]/90">needs outreach</span>
+            <span className="text-sm text-[#C3F400]/90">members</span>
           </div>
           <p className="mt-3 text-xs text-[#9AA7B8] inline-flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5 text-[#C3F400]" />
-            Average lull:{' '}
-            <span className="font-mono tabular-nums text-[#DFE2EF]">
-              {stats.avgLull} days
-            </span>
+            Last visit was 8–30 days ago
           </p>
         </div>
 
-        {/* Inactive (>30 Days) */}
+        {/* Inactive Members */}
         <div className="rounded-lg border border-white/[0.08] bg-[#141824] p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-[#FCA5A5]">
-              Inactive (&gt;30 Days)
+              Inactive Members
             </span>
             <AlertTriangle className="w-4 h-4 text-[#F87171]" />
           </div>
@@ -267,11 +247,11 @@ export function MemberDirectoryScreen({
             <span className="font-mono text-4xl font-bold tabular-nums text-[#FCA5A5]">
               {stats.inactiveCount}
             </span>
-            <span className="text-sm text-[#9AA7B8]">retention alert</span>
+            <span className="text-sm text-[#9AA7B8]">members</span>
           </div>
           <p className="mt-3 text-xs text-[#9AA7B8] inline-flex items-center gap-1.5">
-            <BellOff className="w-3.5 h-3.5 text-[#F87171]" />
-            Dormancy protocol initiated
+            <AlertTriangle className="w-3.5 h-3.5 text-[#F87171]" />
+            No visit for over 30 days
           </p>
         </div>
       </section>
@@ -290,20 +270,20 @@ export function MemberDirectoryScreen({
             <div>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#F87171] bg-[#E62020]/15 border border-[#E62020]/30 px-2 py-0.5 rounded">
-                  Automated Retention Engine
+                  Member Follow-Up
                 </span>
-                <span className="text-[#9AA7B8]">Batch trigger verified</span>
+                <span className="text-[#9AA7B8]">Personal messages</span>
               </div>
               <h2
                 id="retention-engine-heading"
                 className="mt-2.5 font-display text-xl sm:text-2xl font-bold text-[#DFE2EF]"
               >
-                {stats.atRiskCount} members detected inactive for 1–2 weeks
+                {stats.atRiskCount} members may need a check-in
               </h2>
               <p className="mt-2 text-sm text-[#9AA7B8] leading-relaxed max-w-xl">
-                Re-engagement outreach sequence is primed. Broadcast personal
-                encouragement from Coach Danny along with direct class booking
-                slots to reclaim roster attendance.
+                {stats.atRiskCount > 0
+                  ? "These members haven't visited in 8–30 days. Send a friendly message to invite them back."
+                  : "Members who haven't visited in 8–30 days will appear here. Send them a friendly message to invite them back."}
               </p>
             </div>
           </div>

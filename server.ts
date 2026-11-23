@@ -46,6 +46,18 @@ function validateVercelConfiguration(): void {
   }
 }
 
+function isWorkoutSelection(
+  value: unknown,
+): value is Record<WorkoutKey, boolean> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const selection = value as Partial<Record<WorkoutKey, unknown>>;
+  return ALLOWED_WORKOUT_KEYS.every(
+    (key) => typeof selection[key] === 'boolean',
+  );
+}
+
 export async function createApp() {
   validateVercelConfiguration();
 
@@ -285,13 +297,30 @@ export async function createApp() {
       const workoutKey = req.body?.workoutKey as WorkoutKey | undefined;
       const allDone =
         typeof req.body?.allDone === 'boolean' ? req.body.allDone : undefined;
+      const hasWorkouts = Object.prototype.hasOwnProperty.call(
+        req.body ?? {},
+        'workouts',
+      );
+      const workouts = isWorkoutSelection(req.body?.workouts)
+        ? req.body.workouts
+        : undefined;
 
       if (!checkInId) {
         res.status(400).json({ error: 'Invalid check-in ID.' });
         return;
       }
-      if (allDone === undefined && (!workoutKey || !ALLOWED_WORKOUT_KEYS.includes(workoutKey))) {
-        res.status(400).json({ error: 'Provide a valid workoutKey or allDone flag.' });
+      if (hasWorkouts && !workouts) {
+        res.status(400).json({ error: 'Provide a valid set of workout selections.' });
+        return;
+      }
+      if (
+        !workouts &&
+        allDone === undefined &&
+        (!workoutKey || !ALLOWED_WORKOUT_KEYS.includes(workoutKey))
+      ) {
+        res.status(400).json({
+          error: 'Provide a valid workoutKey, allDone flag, or workout selections.',
+        });
         return;
       }
 
@@ -299,6 +328,7 @@ export async function createApp() {
         checkInId,
         workoutKey,
         allDone,
+        workouts,
       });
       if (!updated) {
         res.status(404).json({ error: 'Check-in entry not found.' });

@@ -31,13 +31,12 @@ export default function App() {
     clearQueue,
     confirmBatchCheckIn,
     toggleWorkoutTag,
-    toggleAllWorkoutsDone,
+    saveWorkoutTags,
     removeCheckIn,
     setOutreachTemplate,
     dismissDispatchBanner,
     sendOutreach,
     addNewMember,
-    logMemberProgress,
     resetDemoData,
   } = usePortalStore();
 
@@ -80,8 +79,7 @@ export default function App() {
                 onUnqueueMember={unqueueMember}
                 onClearQueue={clearQueue}
                 onConfirmBatchCheckIn={confirmBatchCheckIn}
-                onToggleWorkout={toggleWorkoutTag}
-                onToggleAllWorkoutsDone={toggleAllWorkoutsDone}
+                onSaveWorkouts={saveWorkoutTags}
                 onRemoveCheckIn={removeCheckIn}
               />
             ) : (
@@ -125,7 +123,6 @@ export default function App() {
         member={historyMember}
         onClose={() => setHistoryMemberId(null)}
         onSendOutreach={sendOutreach}
-        onLogProgress={logMemberProgress}
         onToggleWorkoutTag={toggleWorkoutTag}
         onJumpToAttendanceDate={(sessionDate) => {
           setActiveView('attendance');

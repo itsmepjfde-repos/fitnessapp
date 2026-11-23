@@ -20,7 +20,7 @@ import {
 } from './types.ts';
 
 const DEFAULT_TEMPLATE =
-  "Hey [First Name]! Coach Danny noticed you missed this week at DANNY'STHENICS. We have a new agility session ready for you tomorrow! Tap to reserve your spot: dannysthenics.co/book";
+  "Hey [First Name]! Coach Danny noticed you missed this week at DANNY'STHENICS. Please let me know if you have any questions or concerns. We hope to see you back in the studio soon!";
 
 function emptyWorkouts(): Record<WorkoutKey, boolean> {
   return {
@@ -466,6 +466,7 @@ export class MySqlPortalRepository implements PortalRepository {
     checkInId: string;
     workoutKey?: WorkoutKey;
     allDone?: boolean;
+    workouts?: Record<WorkoutKey, boolean>;
   }): Promise<CheckInEntry | null> {
     const numericId = Number(input.checkInId);
     if (!Number.isInteger(numericId) || numericId <= 0) return null;
@@ -483,7 +484,19 @@ export class MySqlPortalRepository implements PortalRepository {
         return null;
       }
 
-      if (typeof input.allDone === 'boolean') {
+      if (input.workouts) {
+        await conn.execute(
+          'DELETE FROM checkin_workouts WHERE checkin_id = ?',
+          [numericId],
+        );
+        for (const key of ALLOWED_WORKOUT_KEYS) {
+          if (!input.workouts[key]) continue;
+          await conn.execute(
+            'INSERT INTO checkin_workouts (checkin_id, workout_key) VALUES (?, ?)',
+            [numericId, toDbWorkoutKey(key)],
+          );
+        }
+      } else if (typeof input.allDone === 'boolean') {
         if (input.allDone) {
           for (const key of ALLOWED_WORKOUT_KEYS) {
             await conn.execute(

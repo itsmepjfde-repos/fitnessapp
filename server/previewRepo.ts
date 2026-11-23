@@ -40,7 +40,7 @@ interface PreviewCheckIn extends CheckInEntry {
 }
 
 const DEFAULT_TEMPLATE =
-  "Hey [First Name]! Coach Danny noticed you missed this week at DANNY'STHENICS. We have a new agility session ready for you tomorrow! Tap to reserve your spot: dannysthenics.co/book";
+  "Hey [First Name]! Coach Danny noticed you missed this week at DANNY'STHENICS. Please let me know if you have any questions or concerns. We hope to see you back in the studio soon!";
 
 function daysBetween(olderIso: string, newerIso: string): number {
   const [y1, m1, d1] = olderIso.split('-').map(Number);
@@ -864,11 +864,14 @@ export class PreviewPortalRepository implements PortalRepository {
     checkInId: string;
     workoutKey?: WorkoutKey;
     allDone?: boolean;
+    workouts?: Record<WorkoutKey, boolean>;
   }): Promise<CheckInEntry | null> {
     const entry = this.checkIns.find((c) => c.id === input.checkInId);
     if (!entry) return null;
 
-    if (typeof input.allDone === 'boolean') {
+    if (input.workouts) {
+      entry.workouts = { ...input.workouts };
+    } else if (typeof input.allDone === 'boolean') {
       entry.workouts = {
         agility: input.allDone,
         flexibility: input.allDone,

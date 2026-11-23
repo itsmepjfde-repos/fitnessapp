@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Download,
   Printer,
+  Save,
   Search,
   Trash2,
   UserCheck,
@@ -32,8 +33,10 @@ interface BatchAttendanceScreenProps {
   onUnqueueMember: (memberId: string) => void;
   onClearQueue: () => void;
   onConfirmBatchCheckIn: (checkInTime: string) => void;
-  onToggleWorkout: (checkInId: string, workout: WorkoutKey) => void;
-  onToggleAllWorkoutsDone: (checkInId: string) => void;
+  onSaveWorkouts: (
+    checkInId: string,
+    workouts: Record<WorkoutKey, boolean>,
+  ) => Promise<boolean>;
   onRemoveCheckIn: (checkInId: string) => void;
 }
 
@@ -50,6 +53,13 @@ function formatHumanDate(iso: string): string {
   });
 }
 
+function areWorkoutTagsEqual(
+  left: Record<WorkoutKey, boolean>,
+  right: Record<WorkoutKey, boolean>,
+): boolean {
+  return WORKOUT_META.every(({ key }) => left[key] === right[key]);
+}
+
 export function BatchAttendanceScreen({
   selectedDate,
   members,
@@ -60,12 +70,15 @@ export function BatchAttendanceScreen({
   onUnqueueMember,
   onClearQueue,
   onConfirmBatchCheckIn,
-  onToggleWorkout,
-  onToggleAllWorkoutsDone,
+  onSaveWorkouts,
   onRemoveCheckIn,
 }: BatchAttendanceScreenProps) {
   const [scanQuery, setScanQuery] = useState('');
   const [rosterFilter, setRosterFilter] = useState<RosterFilter>('all');
+  const [workoutDrafts, setWorkoutDrafts] = useState<
+    Record<string, Record<WorkoutKey, boolean>>
+  >({});
+  const [savingCheckInId, setSavingCheckInId] = useState<string | null>(null);
   const getIstTimeInput = () =>
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Asia/Kolkata',
@@ -126,7 +139,14 @@ export function BatchAttendanceScreen({
         const member = memberMap.get(entry.memberId);
         if (!member) return null;
         const completedAll = Object.values(entry.workouts).every(Boolean);
-        return { entry, member, completedAll };
+        const workouts = workoutDrafts[entry.id] ?? entry.workouts;
+        return {
+          entry,
+          member,
+          completedAll,
+          workouts,
+          hasUnsavedWorkouts: !areWorkoutTagsEqual(workouts, entry.workouts),
+        };
       })
       .filter(
         (
@@ -135,9 +155,11 @@ export function BatchAttendanceScreen({
           entry: CheckInEntry;
           member: Member;
           completedAll: boolean;
+          workouts: Record<WorkoutKey, boolean>;
+          hasUnsavedWorkouts: boolean;
         } => Boolean(item),
       );
-  }, [checkIns, memberMap]);
+  }, [checkIns, memberMap, workoutDrafts]);
 
   const completedCount = enrichedCheckIns.filter((c) => c.completedAll).length;
   const pendingCount = enrichedCheckIns.length - completedCount;
@@ -157,6 +179,38 @@ export function BatchAttendanceScreen({
     if (searchSuggestions.length > 0) {
       onQueueMember(searchSuggestions[0].id);
       setScanQuery('');
+    }
+  };
+
+  const handleToggleWorkout = (entry: CheckInEntry, workout: WorkoutKey) => {
+    setWorkoutDrafts((prev) => {
+      const current = prev[entry.id] ?? entry.workouts;
+      const updated = { ...current, [workout]: !current[workout] };
+      const next = { ...prev };
+      if (areWorkoutTagsEqual(updated, entry.workouts)) {
+        delete next[entry.id];
+      } else {
+        next[entry.id] = updated;
+      }
+      return next;
+    });
+  };
+
+  const handleSaveWorkouts = async (
+    checkInId: string,
+    workouts: Record<WorkoutKey, boolean>,
+  ) => {
+    setSavingCheckInId(checkInId);
+    try {
+      if (await onSaveWorkouts(checkInId, workouts)) {
+        setWorkoutDrafts((prev) => {
+          const next = { ...prev };
+          delete next[checkInId];
+          return next;
+        });
+      }
+    } finally {
+      setSavingCheckInId(null);
     }
   };
 
@@ -204,7 +258,7 @@ export function BatchAttendanceScreen({
             Batch Attendance &amp; Check-In
           </h1>
           <p className="mt-1 text-sm text-[#9AA7B8]">
-            Manage date-wise member check-ins and tap workout tags to record daily completion.
+            Select each athlete&apos;s workouts, then save the row.
           </p>
         </div>
 
@@ -467,7 +521,7 @@ export function BatchAttendanceScreen({
                   : `Checked-In Members · ${formatHumanDate(selectedDate)}`}
               </h2>
               <p className="mt-0.5 text-xs text-[#9AA7B8]">
-                Tap workout tags to assign or mark completion for each athlete on{' '}
+                Select each athlete&apos;s workouts, then save the row for{' '}
                 <span className="font-mono text-[#DFE2EF]">{selectedDate}</span>
               </p>
             </div>
@@ -521,7 +575,7 @@ export function BatchAttendanceScreen({
                 <tr className="bg-[#0B0F19] border-b border-white/[0.08] font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-[#64748B]">
                   <th className="py-3.5 pl-5 pr-3">Athlete &amp; ID</th>
                   <th className="py-3.5 px-3">Check-In Time</th>
-                  <th className="py-3.5 px-3">Assign Workouts (Tap to Toggle)</th>
+                  <th className="py-3.5 px-3">Workout</th>
                   <th className="py-3.5 pl-3 pr-5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -534,7 +588,7 @@ export function BatchAttendanceScreen({
                       </p>
                       <p className="mt-1 text-xs text-[#9AA7B8]">
                         {rosterFilter !== 'all'
-                          ? 'Switch back to ALL or toggle workout tags to move athletes across statuses.'
+                          ? 'Switch back to ALL or save workout changes to update these filters.'
                           : 'Queue athletes on the left to log attendance for this date, or switch to another date above.'}
                       </p>
                       {rosterFilter !== 'all' && (
@@ -549,11 +603,12 @@ export function BatchAttendanceScreen({
                     </td>
                   </tr>
                 ) : (
-                  filteredCheckIns.map(({ entry, member, completedAll }) => (
-                    <tr
-                      key={entry.id}
-                      className="transition-colors duration-100 hover:bg-white/[0.025]"
-                    >
+                  filteredCheckIns.map(
+                    ({ entry, member, workouts, hasUnsavedWorkouts }) => (
+                      <tr
+                        key={entry.id}
+                        className="transition-colors duration-100 hover:bg-white/[0.025]"
+                      >
                       {/* Athlete & ID */}
                       <td className="py-4 pl-5 pr-3 align-middle">
                         <div className="flex items-center gap-3">
@@ -581,14 +636,15 @@ export function BatchAttendanceScreen({
                       <td className="py-4 px-3 align-middle">
                         <div className="flex flex-wrap gap-1.5 max-w-[280px]">
                           {WORKOUT_META.map(({ key, label }) => {
-                            const active = entry.workouts[key];
+                            const active = workouts[key];
                             return (
                               <button
                                 key={key}
                                 type="button"
+                                disabled={savingCheckInId === entry.id}
                                 aria-pressed={active}
-                                onClick={() => onToggleWorkout(entry.id, key)}
-                                className={`h-8 px-2.5 rounded text-xs font-medium inline-flex items-center gap-1.5 transition-all duration-150 whitespace-nowrap shrink-0 ${
+                                onClick={() => handleToggleWorkout(entry, key)}
+                                className={`h-8 px-2.5 rounded text-xs font-medium inline-flex items-center gap-1.5 transition-all duration-150 whitespace-nowrap shrink-0 disabled:opacity-60 disabled:cursor-not-allowed ${
                                   active
                                     ? 'bg-[#E62020] hover:bg-[#EF3333] text-white font-semibold border border-[#EF4444]/60'
                                     : 'bg-[#1D2332] hover:bg-[#262E42] text-[#CBD5E1] border border-white/10'
@@ -607,14 +663,22 @@ export function BatchAttendanceScreen({
                         <div className="inline-flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => onToggleAllWorkoutsDone(entry.id)}
-                            className={`h-9 px-3 rounded font-mono text-xs font-semibold transition-colors whitespace-nowrap ${
-                              completedAll
-                                ? 'bg-[#10B981]/15 border border-[#10B981]/40 text-[#4EDEA3] hover:bg-[#10B981]/25'
-                                : 'bg-[#22293A] hover:bg-[#2C354B] border border-white/12 text-[#DFE2EF]'
-                            }`}
+                            disabled={
+                              !hasUnsavedWorkouts || savingCheckInId !== null
+                            }
+                            onClick={() =>
+                              void handleSaveWorkouts(entry.id, workouts)
+                            }
+                            title={
+                              hasUnsavedWorkouts
+                                ? 'Save workout selections'
+                                : 'No unsaved workout changes'
+                            }
+                            aria-label={`Save workout selections for ${member.name}`}
+                            className="h-9 px-2.5 rounded font-mono text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap border border-[#10B981]/35 bg-[#10B981]/10 text-[#4EDEA3] hover:bg-[#10B981]/20 disabled:border-white/10 disabled:bg-[#1B2130] disabled:text-[#64748B] disabled:cursor-not-allowed"
                           >
-                            {completedAll ? 'COMPLETED' : 'All Done'}
+                            <Save className="w-3.5 h-3.5" />
+                            {savingCheckInId === entry.id ? 'Saving' : 'Save'}
                           </button>
 
                           <button
@@ -628,8 +692,9 @@ export function BatchAttendanceScreen({
                           </button>
                         </div>
                       </td>
-                    </tr>
-                  ))
+                      </tr>
+                    ),
+                  )
                 )}
               </tbody>
             </table>

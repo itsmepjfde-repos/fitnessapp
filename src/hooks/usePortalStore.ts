@@ -12,7 +12,7 @@ import {
 } from '../types/portal';
 
 const DEFAULT_OUTREACH_TEMPLATE =
-  "Hey [First Name]! Coach Danny noticed you missed this week at DANNY'STHENICS. We have a new agility session ready for you tomorrow! Tap to reserve your spot: dannysthenics.co/book";
+  "Hey [First Name]! Coach Danny noticed you missed this week at DANNY'STHENICS. Please let me know if you have any questions or concerns. We hope to see you back in the studio soon!";
 
 export function usePortalStore() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
@@ -323,18 +323,17 @@ export function usePortalStore() {
     [apiFetch, pushToast],
   );
 
-  const toggleAllWorkoutsDone = useCallback(
-    async (checkInId: string) => {
-      const target = checkIns.find((c) => c.id === checkInId);
-      const currentAllDone = target
-        ? Object.values(target.workouts).every(Boolean)
-        : false;
+  const saveWorkoutTags = useCallback(
+    async (
+      checkInId: string,
+      workouts: Record<WorkoutKey, boolean>,
+    ): Promise<boolean> => {
       try {
         const res = await apiFetch<{ checkIn: CheckInEntry }>(
           `/api/attendance/${encodeURIComponent(checkInId)}/workouts`,
           {
             method: 'PATCH',
-            body: JSON.stringify({ allDone: !currentAllDone }),
+            body: JSON.stringify({ workouts }),
           },
         );
         setCheckIns((prev) =>
@@ -354,15 +353,21 @@ export function usePortalStore() {
               : m,
           ),
         );
+        pushToast({
+          title: 'Workouts saved',
+          tone: 'emerald',
+        });
+        return true;
       } catch (err) {
         pushToast({
-          title: 'Could not update workouts',
+          title: 'Could not save workouts',
           detail: err instanceof Error ? err.message : 'Please try again.',
           tone: 'crimson',
         });
+        return false;
       }
     },
-    [apiFetch, checkIns, pushToast],
+    [apiFetch, pushToast],
   );
 
   const removeCheckIn = useCallback(
@@ -471,35 +476,6 @@ export function usePortalStore() {
     [apiFetch, pushToast],
   );
 
-  const logMemberProgress = useCallback(
-    async (memberId: string, strengthIndex: number, sessions: number) => {
-      try {
-        const res = await apiFetch<{ member: Member }>(
-          `/api/members/${encodeURIComponent(memberId)}/progress`,
-          {
-            method: 'POST',
-            body: JSON.stringify({ strengthIndex, sessions }),
-          },
-        );
-        setMembers((prev) =>
-          prev.map((m) => (m.id === memberId ? res.member : m)),
-        );
-        pushToast({
-          title: 'Progress entry logged',
-          detail: `Recorded Strength Index ${strengthIndex} (${sessions} sessions).`,
-          tone: 'emerald',
-        });
-      } catch (err) {
-        pushToast({
-          title: 'Progress save failed',
-          detail: err instanceof Error ? err.message : 'Please try again.',
-          tone: 'crimson',
-        });
-      }
-    },
-    [apiFetch, pushToast],
-  );
-
   const resetDemoData = useCallback(async () => {
     try {
       await apiFetch('/api/demo/reset', { method: 'POST' });
@@ -543,13 +519,12 @@ export function usePortalStore() {
     clearQueue,
     confirmBatchCheckIn,
     toggleWorkoutTag,
-    toggleAllWorkoutsDone,
+    saveWorkoutTags,
     removeCheckIn,
     setOutreachTemplate,
     dismissDispatchBanner,
     sendOutreach,
     addNewMember,
-    logMemberProgress,
     resetDemoData,
   };
 }

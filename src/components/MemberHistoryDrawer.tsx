@@ -1,11 +1,10 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   CalendarDays,
   Check,
   ExternalLink,
   MessageCircle,
   MessageSquare,
-  Plus,
   X,
 } from 'lucide-react';
 import {
@@ -21,25 +20,73 @@ interface MemberHistoryDrawerProps {
   member: Member | null;
   onClose: () => void;
   onSendOutreach: (memberIds: string[], channel: 'WhatsApp' | 'SMS') => void;
-  onLogProgress: (memberId: string, strengthIndex: number, sessions: number) => void;
   onToggleWorkoutTag: (checkInId: string, workoutKey: WorkoutKey) => void;
   onJumpToAttendanceDate: (sessionDate: string) => void;
 }
 
 type DateWindow = 'all' | '7d' | '30d';
 
+const WORKOUT_COLORS: Record<WorkoutKey, string> = {
+  agility: 'bg-[#EF233C] text-white',
+  flexibility: 'bg-[#10B981] text-[#052418]',
+  core: 'bg-[#C3F400] text-[#172000]',
+  weightTraining: 'bg-[#60A5FA] text-[#071A33]',
+};
+
 export function MemberHistoryDrawer({
   member,
   onClose,
   onSendOutreach,
-  onLogProgress,
   onToggleWorkoutTag,
   onJumpToAttendanceDate,
 }: MemberHistoryDrawerProps) {
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const [newStrength, setNewStrength] = useState('88');
-  const [newSessions, setNewSessions] = useState('4');
   const [dateWindow, setDateWindow] = useState<DateWindow>('all');
+
+  const weeklyTraining = useMemo(() => {
+    const today = getTodayIsoDate();
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = shiftIsoDate(today, index - 6);
+      const [year, month, day] = date.split('-').map(Number);
+      return {
+        date,
+        label: new Intl.DateTimeFormat('en', { weekday: 'short' }).format(
+          new Date(year, month - 1, day, 12),
+        ),
+        dayOfMonth: day,
+      };
+    });
+    const countsByDate = new Map<string, Record<WorkoutKey, number>>();
+    for (const { date } of days) {
+      countsByDate.set(date, {
+        agility: 0,
+        flexibility: 0,
+        core: 0,
+        weightTraining: 0,
+      });
+    }
+
+    let totalVisits = 0;
+    for (const visit of member?.attendanceHistory ?? []) {
+      const dailyCounts = countsByDate.get(visit.sessionDate);
+      if (!dailyCounts) continue;
+      totalVisits += 1;
+      for (const { key } of WORKOUT_META) {
+        if (visit.workouts[key]) dailyCounts[key] += 1;
+      }
+    }
+
+    return {
+      days,
+      totalVisits,
+      rows: WORKOUT_META.map(({ key, label }) => ({
+        key,
+        label,
+        counts: days.map(
+          ({ date }) => countsByDate.get(date)?.[key] ?? 0,
+        ),
+      })),
+    };
+  }, [member]);
 
   const filteredVisits = useMemo(() => {
     if (!member) return [];
@@ -57,51 +104,6 @@ export function MemberHistoryDrawer({
 
   if (!member) return null;
 
-  const series = member.progressSeries;
-  const chartW = 420;
-  const chartH = 160;
-  const padX = 28;
-  const padY = 20;
-  const minVal = 55;
-  const maxVal = 100;
-  const targetCeiling = 90;
-
-  const points = series.map((pt, idx) => {
-    const x =
-      padX + (idx / Math.max(1, series.length - 1)) * (chartW - padX * 2);
-    const clamped = Math.max(minVal, Math.min(maxVal, pt.strengthIndex));
-    const y =
-      chartH -
-      padY -
-      ((clamped - minVal) / (maxVal - minVal)) * (chartH - padY * 2);
-    return { ...pt, x, y };
-  });
-
-  const linePath = points
-    .map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
-    .join(' ');
-  const areaPath =
-    points.length > 0
-      ? `${linePath} L ${points[points.length - 1].x.toFixed(1)} ${(chartH - padY).toFixed(1)} L ${points[0].x.toFixed(1)} ${(chartH - padY).toFixed(1)} Z`
-      : '';
-
-  const targetY =
-    chartH -
-    padY -
-    ((targetCeiling - minVal) / (maxVal - minVal)) * (chartH - padY * 2);
-
-  const activePoint =
-    hoveredIdx !== null && points[hoveredIdx]
-      ? points[hoveredIdx]
-      : points[points.length - 1];
-
-  const handleLogSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const sVal = Math.max(55, Math.min(100, Number(newStrength) || 85));
-    const sessVal = Math.max(0, Math.min(7, Number(newSessions) || 3));
-    onLogProgress(member.id, sVal, sessVal);
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-xs"
@@ -109,7 +111,7 @@ export function MemberHistoryDrawer({
       aria-modal="true"
       aria-labelledby="member-history-title"
     >
-      <div className="w-full max-w-xl h-full bg-[#111726] border-l border-white/12 shadow-[0_0_0_1px_rgba(16,185,129,0.2),0_20px_40px_-15px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden">
+      <div className="w-full max-w-3xl h-full bg-[#111726] border-l border-white/12 shadow-[0_0_0_1px_rgba(16,185,129,0.2),0_20px_40px_-15px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-6 py-5 border-b border-white/[0.08] flex items-start justify-between gap-4 bg-[#0C111D]">
           <div className="flex items-center gap-3.5 min-w-0">
@@ -264,171 +266,88 @@ export function MemberHistoryDrawer({
             )}
           </section>
 
-          {/* Kinetic Obsidian Longitudinal Progress Chart */}
-          <div className="rounded-lg border border-white/[0.08] bg-[#0B101C] p-4">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div>
-                <h3 className="font-display text-sm font-semibold text-[#DFE2EF]">
-                  Longitudinal Strength &amp; Conditioning Index
-                </h3>
-                <p className="text-xs text-[#9AA7B8]">
-                  6-week trend vs. 90-pt target ceiling
-                </p>
-              </div>
-              {activePoint && (
-                <div className="text-right font-mono tabular-nums">
-                  <span className="text-base font-bold text-[#4EDEA3]">
-                    {activePoint.strengthIndex}
-                  </span>
-                  <span className="block text-[10px] text-[#9AA7B8]">
-                    {activePoint.weekLabel} &middot; {activePoint.sessions} sess
-                  </span>
-                </div>
-              )}
+          {/* Weekly Workout Matrix */}
+          <section
+            aria-labelledby="weekly-workout-heading"
+            className="rounded-lg border border-white/[0.08] bg-[#0B101C] p-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3
+                id="weekly-workout-heading"
+                className="font-display text-sm font-semibold text-[#DFE2EF]"
+              >
+                Workout Types This Week
+              </h3>
+              <span className="font-mono text-[11px] text-[#9AA7B8]">
+                {weeklyTraining.totalVisits} visits · Last 7 days
+              </span>
             </div>
 
-            <svg
-              viewBox={`0 0 ${chartW} ${chartH}`}
-              className="w-full h-40 overflow-visible"
-              role="img"
-              aria-label={`Strength index trend for ${member.name}`}
-            >
-              <defs>
-                <linearGradient id="kineticArea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10B981" stopOpacity="0.32" />
-                  <stop offset="100%" stopColor="#10B981" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-
-              {[60, 75, 90].map((val) => {
-                const y =
-                  chartH -
-                  padY -
-                  ((val - minVal) / (maxVal - minVal)) * (chartH - padY * 2);
-                return (
-                  <g key={val}>
-                    <line
-                      x1={padX}
-                      x2={chartW - padX}
-                      y1={y}
-                      y2={y}
-                      stroke="rgba(255,255,255,0.06)"
-                      strokeWidth="1"
-                    />
-                    <text
-                      x={4}
-                      y={y + 3}
-                      fill="#64748B"
-                      fontSize="9"
-                      fontFamily="JetBrains Mono, monospace"
-                    >
-                      {val}
-                    </text>
-                  </g>
-                );
-              })}
-
-              <line
-                x1={padX}
-                x2={chartW - padX}
-                y1={targetY}
-                y2={targetY}
-                stroke="#C3F400"
-                strokeWidth="1.25"
-                strokeDasharray="4 4"
-                opacity="0.75"
-              />
-              <text
-                x={chartW - padX}
-                y={targetY - 5}
-                textAnchor="end"
-                fill="#C3F400"
-                fontSize="9"
-                fontFamily="JetBrains Mono, monospace"
-              >
-                TARGET 90
-              </text>
-
-              {areaPath && <path d={areaPath} fill="url(#kineticArea)" />}
-              {linePath && (
-                <path
-                  d={linePath}
-                  fill="none"
-                  stroke="#10B981"
-                  strokeWidth="2.2"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
-              )}
-
-              {points.map((pt, idx) => (
-                <g
-                  key={pt.weekLabel}
-                  onMouseEnter={() => setHoveredIdx(idx)}
-                  onMouseLeave={() => setHoveredIdx(null)}
-                  className="cursor-pointer"
-                >
-                  <circle
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={hoveredIdx === idx ? 5.5 : 3.5}
-                    fill={hoveredIdx === idx ? '#C3F400' : '#4EDEA3'}
-                    stroke="#090D16"
-                    strokeWidth="1.5"
-                  />
-                  <text
-                    x={pt.x}
-                    y={chartH - 3}
-                    textAnchor="middle"
-                    fill="#9AA7B8"
-                    fontSize="9.5"
-                    fontFamily="JetBrains Mono, monospace"
-                  >
-                    {pt.weekLabel}
-                  </text>
-                </g>
-              ))}
-            </svg>
-
-            <form
-              onSubmit={handleLogSubmit}
-              className="mt-4 pt-3.5 border-t border-white/[0.07] flex flex-wrap items-end gap-2.5"
-            >
-              <div className="flex-1 min-w-[100px]">
-                <label className="block font-mono text-[10px] uppercase tracking-wider text-[#9AA7B8] mb-1">
-                  Strength Index (55–100)
-                </label>
-                <input
-                  type="number"
-                  min={55}
-                  max={100}
-                  value={newStrength}
-                  onChange={(e) => setNewStrength(e.target.value)}
-                  className="w-full h-9 px-2.5 rounded bg-[#161D2E] border border-white/12 font-mono text-xs tabular-nums text-[#DFE2EF] kinetic-focus"
-                />
-              </div>
-              <div className="w-24">
-                <label className="block font-mono text-[10px] uppercase tracking-wider text-[#9AA7B8] mb-1">
-                  Sessions
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={7}
-                  value={newSessions}
-                  onChange={(e) => setNewSessions(e.target.value)}
-                  className="w-full h-9 px-2.5 rounded bg-[#161D2E] border border-white/12 font-mono text-xs tabular-nums text-[#DFE2EF] kinetic-focus"
-                />
-              </div>
-              <button
-                type="submit"
-                className="h-9 px-3.5 rounded bg-[#10B981] hover:bg-[#22C55E] text-[#052418] font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Log Week
-              </button>
-            </form>
-          </div>
+            {weeklyTraining.totalVisits === 0 ? (
+              <p className="text-xs text-[#64748B] py-4 text-center border border-dashed border-white/[0.08] rounded">
+                No visits recorded in the last 7 days.
+              </p>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[35rem] table-fixed text-xs">
+                    <thead>
+                      <tr>
+                        <th
+                          scope="col"
+                          className="w-32 pb-2 text-left font-mono text-[10px] uppercase tracking-wider text-[#9AA7B8]"
+                        >
+                          Training
+                        </th>
+                        {weeklyTraining.days.map((day) => (
+                          <th
+                            key={day.date}
+                            scope="col"
+                            className="pb-2 text-center font-mono font-medium text-[#9AA7B8]"
+                          >
+                            <span className="block">{day.label}</span>
+                            <span className="block text-[10px] text-[#64748B]">
+                              {day.date.slice(5).replace('-', '/')}
+                            </span>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {weeklyTraining.rows.map((row) => (
+                        <tr key={row.key}>
+                          <th
+                            scope="row"
+                            className="py-1.5 pr-2 text-left font-medium text-[#DFE2EF]"
+                          >
+                            {row.label}
+                          </th>
+                          {row.counts.map((count, index) => (
+                            <td key={weeklyTraining.days[index].date} className="p-1">
+                              <span
+                                aria-label={`${count} ${row.label} visits on ${weeklyTraining.days[index].date}`}
+                                className={`flex h-8 items-center justify-center rounded font-mono text-[11px] font-bold tabular-nums ${
+                                  count > 0
+                                    ? WORKOUT_COLORS[row.key]
+                                    : 'bg-[#161D2E] text-[#64748B]'
+                                }`}
+                              >
+                                {count > 0 ? count : '—'}
+                              </span>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-[10px] text-[#64748B]">
+                  Counts show visits tagged with each workout type; a visit can
+                  include more than one type.
+                </p>
+              </>
+            )}
+          </section>
 
           {/* Quick Outreach */}
           <div className="rounded-lg border border-white/[0.08] bg-[#161D2E] p-4 space-y-3">
