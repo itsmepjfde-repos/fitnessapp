@@ -112,7 +112,7 @@ export function LoginScreen({
           <p className="mt-3 text-sm sm:text-base text-[#9AA7B8] leading-relaxed">
             {needsSetup
               ? 'Create your initial coach admin login to secure the workstation.'
-              : 'Sign in to access your coaching workstation, roster directory, and attendance logs.'}
+              : 'Train with purpose. Track your progress. Get stronger every day.'}
           </p>
         </div>
 
