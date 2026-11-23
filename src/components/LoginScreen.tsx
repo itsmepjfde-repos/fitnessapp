@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { ArrowRight, AtSign, Check, Eye, EyeOff, Lock, ShieldCheck, User } from 'lucide-react';
 import { AuthStatus } from '../types/portal';
-import { BrandEmblem, BrandWordmark } from './BrandWordmark';
+import { BrandWordmark } from './BrandWordmark';
 
 interface LoginScreenProps {
   authStatus: AuthStatus | null;
@@ -26,7 +26,7 @@ export function LoginScreen({
   const needsSetup = authStatus?.needsSetup ?? false;
 
   const [fullName, setFullName] = useState('Coach Danny');
-  const [email, setEmail] = useState('coach.danny@dannysthenics.com');
+  const [email, setEmail] = useState('danny@dannysthenics.com');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -89,7 +89,11 @@ export function LoginScreen({
       {/* Top Brand Strip */}
       <header className="relative z-10 border-b border-white/[0.06] bg-[#0B0F19]/80 backdrop-blur-sm">
         <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center gap-3.5">
-          <BrandEmblem className="w-9 h-9" />
+          <img
+            src="/dannysthenics-logo.jpeg"
+            alt="Danny'sthenics FitTx Studio"
+            className="h-11 w-11 rounded-md object-cover"
+          />
           <span className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-[#4EDEA3] whitespace-nowrap">
             Calisthenics &amp; Conditioning
           </span>
@@ -97,7 +101,7 @@ export function LoginScreen({
       </header>
 
       {/* Main Centered Coach Login Card */}
-      <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-12 sm:py-16">
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-start px-4 sm:px-6 pt-8 pb-12 sm:pb-16">
         <div className="text-center max-w-xl mx-auto mb-10">
           <p className="font-display text-2xl sm:text-3xl font-bold uppercase tracking-[0.06em] text-[#DFE2EF]">
             Welcome To
