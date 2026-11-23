@@ -1,6 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { UserPlus, X } from 'lucide-react';
-import { Member } from '../types/portal';
+import { LoaderCircle, UserPlus, X } from 'lucide-react';
 
 interface AddMemberModalProps {
   open: boolean;
@@ -8,13 +7,15 @@ interface AddMemberModalProps {
   onAddMember: (input: {
     name: string;
     phone: string;
-  }) => void;
+  }) => Promise<boolean>;
+  isSubmitting: boolean;
 }
 
 export function AddMemberModal({
   open,
   onClose,
   onAddMember,
+  isSubmitting,
 }: AddMemberModalProps) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -22,7 +23,7 @@ export function AddMemberModal({
 
   if (!open) return null;
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (name.trim().length < 2) {
       setError('Please enter the athlete full name.');
@@ -32,10 +33,11 @@ export function AddMemberModal({
       setError('Please enter a valid contact phone number.');
       return;
     }
-    onAddMember({
+    const added = await onAddMember({
       name: name.trim(),
       phone: phone.trim(),
     });
+    if (!added) return;
     setName('');
     setPhone('');
     setError(null);
@@ -62,8 +64,9 @@ export function AddMemberModal({
           </div>
           <button
             type="button"
+            disabled={isSubmitting}
             onClick={onClose}
-            className="p-1.5 rounded text-[#9AA7B8] hover:text-white hover:bg-white/[0.06]"
+            className="p-1.5 rounded text-[#9AA7B8] hover:text-white hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Close modal"
           >
             <X className="w-4 h-4" />
@@ -82,6 +85,7 @@ export function AddMemberModal({
               id="new-member-name"
               type="text"
               autoFocus
+              disabled={isSubmitting}
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -103,6 +107,7 @@ export function AddMemberModal({
               id="new-member-phone"
               type="tel"
               value={phone}
+              disabled={isSubmitting}
               onChange={(e) => {
                 setPhone(e.target.value);
                 if (error) setError(null);
@@ -122,16 +127,26 @@ export function AddMemberModal({
           <div className="pt-2 flex items-center justify-end gap-2.5">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={onClose}
-              className="px-4 py-2 rounded border border-white/15 bg-transparent hover:bg-white/[0.05] text-sm text-[#DFE2EF] transition-colors"
+              className="px-4 py-2 rounded border border-white/15 bg-transparent hover:bg-white/[0.05] text-sm text-[#DFE2EF] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded bg-[#E62020] hover:bg-[#EF3333] text-sm font-semibold text-white transition-colors"
+              disabled={isSubmitting}
+              aria-busy={isSubmitting}
+              className="px-4 py-2 rounded bg-[#E62020] hover:bg-[#EF3333] text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Add Member
+              {isSubmitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                  Adding member...
+                </span>
+              ) : (
+                'Add Member'
+              )}
             </button>
           </div>
         </form>

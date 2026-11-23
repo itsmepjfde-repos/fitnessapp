@@ -27,10 +27,36 @@ export function usePortalStore() {
   const [outreachTemplate, setOutreachTemplateState] = useState(
     DEFAULT_OUTREACH_TEMPLATE,
   );
+  const [outreachTemplateSaveStatus, setOutreachTemplateSaveStatus] = useState<
+    'idle' | 'saving' | 'saved' | 'error'
+  >('idle');
   const [latestDispatch, setLatestDispatch] =
     useState<OutreachDispatchBanner | null>(null);
   const [loadingData, setLoadingData] = useState(false);
+  const [loadingAttendanceDate, setLoadingAttendanceDate] = useState(false);
+  const [confirmingBatchCheckIn, setConfirmingBatchCheckIn] = useState(false);
+  const [confirmingBatchMemberCount, setConfirmingBatchMemberCount] = useState(0);
+  const [pendingWorkoutTags, setPendingWorkoutTags] = useState<
+    { checkInId: string; workoutKey: WorkoutKey }[]
+  >([]);
+  const [removingCheckInId, setRemovingCheckInId] = useState<string | null>(null);
+  const [sendingOutreach, setSendingOutreach] = useState<{
+    memberIds: string[];
+    channel: 'WhatsApp' | 'SMS';
+  } | null>(null);
+  const [addingMember, setAddingMember] = useState(false);
+  const [resettingDemoData, setResettingDemoData] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const batchCheckInLock = useRef(false);
+  const workoutCheckInLocks = useRef(new Set<string>());
+  const removeCheckInLocks = useRef(new Set<string>());
+  const outreachLock = useRef(false);
+  const addMemberLock = useRef(false);
+  const resetDemoLock = useRef(false);
+  const outreachTemplateSaveTimer = useRef<number | null>(null);
+  const outreachTemplateSaveSequence = useRef(0);
+  const outreachTemplateSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const attendanceDateLoadLock = useRef(false);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -132,9 +158,12 @@ export function usePortalStore() {
 
   const loadAttendanceForDate = useCallback(
     async (dateIso: string) => {
+      if (attendanceDateLoadLock.current) return;
       setSelectedDate(dateIso);
       setQueuedMemberIds([]);
       if (!tokenRef.current) return;
+      attendanceDateLoadLock.current = true;
+      setLoadingAttendanceDate(true);
       try {
         const res = await apiFetch<{ sessionDate: string; checkIns: CheckInEntry[] }>(
           `/api/attendance?date=${encodeURIComponent(dateIso)}`,
@@ -146,6 +175,9 @@ export function usePortalStore() {
           detail: err instanceof Error ? err.message : 'Please try again.',
           tone: 'crimson',
         });
+      } finally {
+        attendanceDateLoadLock.current = false;
+        setLoadingAttendanceDate(false);
       }
     },
     [apiFetch, pushToast],
@@ -220,6 +252,12 @@ export function usePortalStore() {
   );
 
   const signOut = useCallback(() => {
+    if (outreachTemplateSaveTimer.current !== null) {
+      window.clearTimeout(outreachTemplateSaveTimer.current);
+      outreachTemplateSaveTimer.current = null;
+    }
+    outreachTemplateSaveSequence.current += 1;
+    setOutreachTemplateSaveStatus('idle');
     tokenRef.current = null;
     setSession(null);
     setQueuedMemberIds([]);
@@ -245,7 +283,10 @@ export function usePortalStore() {
   }, []);
 
   const confirmBatchCheckIn = useCallback(async (checkInTime: string) => {
-    if (queuedMemberIds.length === 0) return;
+    if (batchCheckInLock.current || queuedMemberIds.length === 0) return;
+    batchCheckInLock.current = true;
+    setConfirmingBatchCheckIn(true);
+    setConfirmingBatchMemberCount(queuedMemberIds.length);
     try {
       const res = await apiFetch<{ addedCount: number; checkIns: CheckInEntry[] }>(
         '/api/attendance/batch',
@@ -260,15 +301,21 @@ export function usePortalStore() {
       );
       setCheckIns(res.checkIns);
       setQueuedMemberIds([]);
-      // Refresh members so dynamic inactivity & attendance history stay in sync
-      const membersRes = await apiFetch<{ members: Member[] }>('/api/members');
-      setMembers(membersRes.members);
-
       if (res.addedCount > 0) {
         pushToast({
           title: `Checked in ${res.addedCount} ${res.addedCount === 1 ? 'athlete' : 'athletes'}`,
           detail: `Recorded for ${selectedDate} at ${checkInTime} IST.`,
           tone: 'emerald',
+        });
+      }
+      try {
+        const membersRes = await apiFetch<{ members: Member[] }>('/api/members');
+        setMembers(membersRes.members);
+      } catch (err) {
+        pushToast({
+          title: 'Check-in recorded; member list refresh failed',
+          detail: err instanceof Error ? err.message : 'Refresh the member list to see updated attendance.',
+          tone: 'crimson',
         });
       }
     } catch (err) {
@@ -277,6 +324,10 @@ export function usePortalStore() {
         detail: err instanceof Error ? err.message : 'Please try again.',
         tone: 'crimson',
       });
+    } finally {
+      batchCheckInLock.current = false;
+      setConfirmingBatchCheckIn(false);
+      setConfirmingBatchMemberCount(0);
     }
   }, [
     apiFetch,
@@ -287,6 +338,9 @@ export function usePortalStore() {
 
   const toggleWorkoutTag = useCallback(
     async (checkInId: string, workoutKey: WorkoutKey) => {
+      if (workoutCheckInLocks.current.has(checkInId)) return;
+      workoutCheckInLocks.current.add(checkInId);
+      setPendingWorkoutTags((prev) => [...prev, { checkInId, workoutKey }]);
       try {
         const res = await apiFetch<{ checkIn: CheckInEntry }>(
           `/api/attendance/${encodeURIComponent(checkInId)}/workouts`,
@@ -318,6 +372,14 @@ export function usePortalStore() {
           detail: err instanceof Error ? err.message : 'Please try again.',
           tone: 'crimson',
         });
+      } finally {
+        workoutCheckInLocks.current.delete(checkInId);
+        setPendingWorkoutTags((prev) =>
+          prev.filter(
+            (tag) =>
+              tag.checkInId !== checkInId || tag.workoutKey !== workoutKey,
+          ),
+        );
       }
     },
     [apiFetch, pushToast],
@@ -372,47 +434,90 @@ export function usePortalStore() {
 
   const removeCheckIn = useCallback(
     async (checkInId: string) => {
+      if (removeCheckInLocks.current.size > 0) return;
+      removeCheckInLocks.current.add(checkInId);
+      setRemovingCheckInId(checkInId);
       const target = checkIns.find((c) => c.id === checkInId);
       const member = target
         ? members.find((m) => m.id === target.memberId)
         : undefined;
       try {
-        await apiFetch(`/api/attendance/${encodeURIComponent(checkInId)}`, {
-          method: 'DELETE',
-        });
-        setCheckIns((prev) => prev.filter((c) => c.id !== checkInId));
-        const membersRes = await apiFetch<{ members: Member[] }>('/api/members');
-        setMembers(membersRes.members);
+        try {
+          await apiFetch(`/api/attendance/${encodeURIComponent(checkInId)}`, {
+            method: 'DELETE',
+          });
+          setCheckIns((prev) => prev.filter((c) => c.id !== checkInId));
+        } catch (err) {
+          pushToast({
+            title: 'Delete failed',
+            detail: err instanceof Error ? err.message : 'Please try again.',
+            tone: 'crimson',
+          });
+          return;
+        }
+        try {
+          const membersRes = await apiFetch<{ members: Member[] }>('/api/members');
+          setMembers(membersRes.members);
+        } catch (err) {
+          pushToast({
+            title: 'Check-in removed; member list refresh failed',
+            detail: err instanceof Error ? err.message : 'Refresh the member list to see updated attendance.',
+            tone: 'crimson',
+          });
+          return;
+        }
         pushToast({
           title: `Removed ${member?.name ?? 'athlete'} from ${selectedDate}`,
           detail: 'Check-in deleted and session credit restored if deducted.',
-          tone: 'crimson',
+          tone: 'emerald',
         });
-      } catch (err) {
-        pushToast({
-          title: 'Delete failed',
-          detail: err instanceof Error ? err.message : 'Please try again.',
-          tone: 'crimson',
-        });
+      } finally {
+        removeCheckInLocks.current.delete(checkInId);
+        setRemovingCheckInId(null);
       }
     },
     [apiFetch, checkIns, members, pushToast, selectedDate],
   );
 
   const setOutreachTemplate = useCallback(
-    async (template: string) => {
+    (template: string) => {
       setOutreachTemplateState(template);
-      if (template.trim().length < 5) return;
-      try {
-        await apiFetch('/api/outreach/template', {
-          method: 'PUT',
-          body: JSON.stringify({ template }),
-        });
-      } catch {
-        // Silent save error while typing
+      outreachTemplateSaveSequence.current += 1;
+      const sequence = outreachTemplateSaveSequence.current;
+      if (outreachTemplateSaveTimer.current !== null) {
+        window.clearTimeout(outreachTemplateSaveTimer.current);
       }
+      if (template.trim().length < 5) {
+        setOutreachTemplateSaveStatus('idle');
+        return;
+      }
+
+      setOutreachTemplateSaveStatus('saving');
+      outreachTemplateSaveTimer.current = window.setTimeout(() => {
+        outreachTemplateSaveQueue.current =
+          outreachTemplateSaveQueue.current.then(async () => {
+            try {
+              await apiFetch('/api/outreach/template', {
+                method: 'PUT',
+                body: JSON.stringify({ template }),
+              });
+              if (sequence === outreachTemplateSaveSequence.current) {
+                setOutreachTemplateSaveStatus('saved');
+              }
+            } catch (err) {
+              if (sequence === outreachTemplateSaveSequence.current) {
+                setOutreachTemplateSaveStatus('error');
+                pushToast({
+                  title: 'Template save failed',
+                  detail: err instanceof Error ? err.message : 'Please try editing the template again.',
+                  tone: 'crimson',
+                });
+              }
+            }
+          });
+      }, 500);
     },
-    [apiFetch],
+    [apiFetch, pushToast],
   );
 
   const dismissDispatchBanner = useCallback(() => {
@@ -421,29 +526,48 @@ export function usePortalStore() {
 
   const sendOutreach = useCallback(
     async (memberIds: string[], channel: 'WhatsApp' | 'SMS') => {
-      if (memberIds.length === 0) return;
+      if (outreachLock.current || memberIds.length === 0) return;
+      outreachLock.current = true;
+      setSendingOutreach({ memberIds, channel });
       try {
-        const res = await apiFetch<{
-          dispatch: OutreachDispatchBanner;
-          count: number;
-        }>('/api/outreach', {
-          method: 'POST',
-          body: JSON.stringify({ memberIds, channel }),
-        });
-        setLatestDispatch({ ...res.dispatch, dismissed: false });
-        const membersRes = await apiFetch<{ members: Member[] }>('/api/members');
-        setMembers(membersRes.members);
+        let dispatch: OutreachDispatchBanner;
+        try {
+          const res = await apiFetch<{
+            dispatch: OutreachDispatchBanner;
+            count: number;
+          }>('/api/outreach', {
+            method: 'POST',
+            body: JSON.stringify({ memberIds, channel }),
+          });
+          dispatch = res.dispatch;
+        } catch (err) {
+          pushToast({
+            title: 'Outreach failed',
+            detail: err instanceof Error ? err.message : 'Please try again.',
+            tone: 'crimson',
+          });
+          return;
+        }
+        setLatestDispatch({ ...dispatch, dismissed: false });
+        try {
+          const membersRes = await apiFetch<{ members: Member[] }>('/api/members');
+          setMembers(membersRes.members);
+        } catch (err) {
+          pushToast({
+            title: 'Outreach logged; member list refresh failed',
+            detail: err instanceof Error ? err.message : 'Refresh the member list to update outreach history.',
+            tone: 'crimson',
+          });
+          return;
+        }
         pushToast({
           title: `${channel} outreach logged`,
-          detail: `Sent to ${res.dispatch.recipientSummary} at ${res.dispatch.timestamp}.`,
+          detail: `Sent to ${dispatch.recipientSummary} at ${dispatch.timestamp}.`,
           tone: 'emerald',
         });
-      } catch (err) {
-        pushToast({
-          title: 'Outreach failed',
-          detail: err instanceof Error ? err.message : 'Please try again.',
-          tone: 'crimson',
-        });
+      } finally {
+        outreachLock.current = false;
+        setSendingOutreach(null);
       }
     },
     [apiFetch, pushToast],
@@ -453,7 +577,10 @@ export function usePortalStore() {
     async (input: {
       name: string;
       phone: string;
-    }) => {
+    }): Promise<boolean> => {
+      if (addMemberLock.current) return false;
+      addMemberLock.current = true;
+      setAddingMember(true);
       try {
         const res = await apiFetch<{ member: Member }>('/api/members', {
           method: 'POST',
@@ -465,18 +592,26 @@ export function usePortalStore() {
           detail: `Member ID ${res.member.pfId}.`,
           tone: 'emerald',
         });
+        return true;
       } catch (err) {
         pushToast({
           title: 'Enrollment failed',
           detail: err instanceof Error ? err.message : 'Please try again.',
           tone: 'crimson',
         });
+        return false;
+      } finally {
+        addMemberLock.current = false;
+        setAddingMember(false);
       }
     },
     [apiFetch, pushToast],
   );
 
   const resetDemoData = useCallback(async () => {
+    if (resetDemoLock.current) return;
+    resetDemoLock.current = true;
+    setResettingDemoData(true);
     try {
       await apiFetch('/api/demo/reset', { method: 'POST' });
       const today = getTodayIsoDate();
@@ -493,6 +628,9 @@ export function usePortalStore() {
         detail: err instanceof Error ? err.message : 'Not supported in live MySQL mode.',
         tone: 'crimson',
       });
+    } finally {
+      resetDemoLock.current = false;
+      setResettingDemoData(false);
     }
   }, [apiFetch, loadWorkspaceData, pushToast]);
 
@@ -505,8 +643,17 @@ export function usePortalStore() {
     checkIns,
     queuedMemberIds,
     outreachTemplate,
+    outreachTemplateSaveStatus,
     latestDispatch,
     loadingData,
+    loadingAttendanceDate,
+    confirmingBatchCheckIn,
+    confirmingBatchMemberCount,
+    pendingWorkoutTags,
+    removingCheckInId,
+    sendingOutreach,
+    addingMember,
+    resettingDemoData,
     toasts,
     dismissToast,
     setupCoach,

@@ -3,6 +3,7 @@ import {
   CalendarDays,
   Check,
   ExternalLink,
+  LoaderCircle,
   MessageCircle,
   MessageSquare,
   X,
@@ -20,7 +21,12 @@ interface MemberHistoryDrawerProps {
   member: Member | null;
   onClose: () => void;
   onSendOutreach: (memberIds: string[], channel: 'WhatsApp' | 'SMS') => void;
+  sendingOutreach: {
+    memberIds: string[];
+    channel: 'WhatsApp' | 'SMS';
+  } | null;
   onToggleWorkoutTag: (checkInId: string, workoutKey: WorkoutKey) => void;
+  pendingWorkoutTags: { checkInId: string; workoutKey: WorkoutKey }[];
   onJumpToAttendanceDate: (sessionDate: string) => void;
 }
 
@@ -37,7 +43,9 @@ export function MemberHistoryDrawer({
   member,
   onClose,
   onSendOutreach,
+  sendingOutreach,
   onToggleWorkoutTag,
+  pendingWorkoutTags,
   onJumpToAttendanceDate,
 }: MemberHistoryDrawerProps) {
   const [dateWindow, setDateWindow] = useState<DateWindow>('all');
@@ -124,10 +132,10 @@ export function MemberHistoryDrawer({
                 id="member-history-title"
                 className="font-display text-xl font-bold text-[#DFE2EF] truncate"
               >
-                {member.name}
+                Workout Analytics
               </h2>
               <p className="mt-0.5 font-mono text-xs text-[#9AA7B8]">
-                PF-ID: {member.pfId}
+                {member.name} · PF-ID: {member.pfId}
               </p>
             </div>
           </div>
@@ -135,7 +143,7 @@ export function MemberHistoryDrawer({
             type="button"
             onClick={onClose}
             className="p-2 rounded text-[#9AA7B8] hover:text-white hover:bg-white/[0.06]"
-            aria-label="Close athlete history"
+            aria-label="Close workout analytics"
           >
             <X className="w-5 h-5" />
           </button>
@@ -208,6 +216,9 @@ export function MemberHistoryDrawer({
               <div className="space-y-2.5">
                 {filteredVisits.map((visit) => {
                   const doneCount = Object.values(visit.workouts).filter(Boolean).length;
+                  const savingWorkout = pendingWorkoutTags.some(
+                    (tag) => tag.checkInId === visit.checkInId,
+                  );
                   return (
                     <div
                       key={visit.checkInId}
@@ -242,16 +253,30 @@ export function MemberHistoryDrawer({
                             <button
                               key={key}
                               type="button"
+                              disabled={savingWorkout}
                               aria-pressed={active}
+                              aria-busy={pendingWorkoutTags.some(
+                                (tag) =>
+                                  tag.checkInId === visit.checkInId &&
+                                  tag.workoutKey === key,
+                              )}
                               onClick={() => onToggleWorkoutTag(visit.checkInId, key)}
-                              className={`h-7 px-2 rounded text-[11px] font-medium inline-flex items-center gap-1 transition-colors whitespace-nowrap ${
+                              className={`h-7 px-2 rounded text-[11px] font-medium inline-flex items-center gap-1 transition-colors whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60 ${
                                 active
                                   ? 'bg-[#E62020] hover:bg-[#EF3333] text-white font-semibold border border-[#EF4444]/60'
                                   : 'bg-[#1D2436] hover:bg-[#263047] text-[#9AA7B8] border border-white/10'
                               }`}
                             >
                               <span>{label}</span>
-                              {active && <Check className="w-3 h-3 stroke-[2.8]" />}
+                              {pendingWorkoutTags.some(
+                                (tag) =>
+                                  tag.checkInId === visit.checkInId &&
+                                  tag.workoutKey === key,
+                              ) ? (
+                                <LoaderCircle className="h-3 w-3 animate-spin" />
+                              ) : (
+                                active && <Check className="w-3 h-3 stroke-[2.8]" />
+                              )}
                             </button>
                           );
                         })}
@@ -362,19 +387,45 @@ export function MemberHistoryDrawer({
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
+                disabled={sendingOutreach !== null}
+                aria-busy={
+                  sendingOutreach?.channel === 'WhatsApp' &&
+                  sendingOutreach.memberIds.includes(member.id)
+                }
                 onClick={() => onSendOutreach([member.id], 'WhatsApp')}
-                className="flex-1 h-9 rounded bg-[#10B981]/15 hover:bg-[#10B981]/25 border border-[#10B981]/40 text-[#4EDEA3] font-mono text-xs font-semibold uppercase tracking-wider inline-flex items-center justify-center gap-2 transition-colors"
+                className="flex-1 h-9 rounded bg-[#10B981]/15 hover:bg-[#10B981]/25 border border-[#10B981]/40 text-[#4EDEA3] font-mono text-xs font-semibold uppercase tracking-wider inline-flex items-center justify-center gap-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <MessageCircle className="w-3.5 h-3.5" />
-                WhatsApp
+                {sendingOutreach?.channel === 'WhatsApp' &&
+                sendingOutreach.memberIds.includes(member.id) ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <MessageCircle className="w-3.5 h-3.5" />
+                )}
+                {sendingOutreach?.channel === 'WhatsApp' &&
+                sendingOutreach.memberIds.includes(member.id)
+                  ? 'Sending...'
+                  : 'WhatsApp'}
               </button>
               <button
                 type="button"
+                disabled={sendingOutreach !== null}
+                aria-busy={
+                  sendingOutreach?.channel === 'SMS' &&
+                  sendingOutreach.memberIds.includes(member.id)
+                }
                 onClick={() => onSendOutreach([member.id], 'SMS')}
-                className="flex-1 h-9 rounded bg-white/[0.05] hover:bg-white/[0.1] border border-white/15 text-[#DFE2EF] font-mono text-xs font-semibold uppercase tracking-wider inline-flex items-center justify-center gap-2 transition-colors"
+                className="flex-1 h-9 rounded bg-white/[0.05] hover:bg-white/[0.1] border border-white/15 text-[#DFE2EF] font-mono text-xs font-semibold uppercase tracking-wider inline-flex items-center justify-center gap-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <MessageSquare className="w-3.5 h-3.5" />
-                Send SMS
+                {sendingOutreach?.channel === 'SMS' &&
+                sendingOutreach.memberIds.includes(member.id) ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <MessageSquare className="w-3.5 h-3.5" />
+                )}
+                {sendingOutreach?.channel === 'SMS' &&
+                sendingOutreach.memberIds.includes(member.id)
+                  ? 'Sending...'
+                  : 'Send SMS'}
               </button>
             </div>
           </div>

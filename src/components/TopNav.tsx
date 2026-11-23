@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, LogOut, RotateCcw } from 'lucide-react';
+import { ChevronDown, LoaderCircle, LogOut, RotateCcw } from 'lucide-react';
 import { AppView, AuthSession } from '../types/portal';
 import { BrandWordmark } from './BrandWordmark';
 
@@ -7,6 +7,7 @@ interface TopNavProps {
   activeView: AppView;
   session: AuthSession;
   canResetDemo: boolean;
+  isResettingDemoData: boolean;
   onSelectView: (view: AppView) => void;
   onResetDemo: () => void;
   onSignOut: () => void;
@@ -16,6 +17,7 @@ export function TopNav({
   activeView,
   session,
   canResetDemo,
+  isResettingDemoData,
   onSelectView,
   onResetDemo,
   onSignOut,
@@ -73,6 +75,18 @@ export function TopNav({
           >
             Member Directory &amp; Inactivity
           </button>
+          <button
+            type="button"
+            disabled
+            title="Assessment is coming soon"
+            aria-label="Assessment (coming soon)"
+            className="px-4 py-2 rounded text-sm font-medium whitespace-nowrap shrink-0 text-[#64748B] opacity-60 cursor-not-allowed"
+          >
+            Assessment
+            <span className="ml-1.5 rounded bg-[#0A0E17] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider">
+              Soon
+            </span>
+          </button>
         </nav>
 
         {/* Zone 3: Coach Account Menu */}
@@ -116,14 +130,16 @@ export function TopNav({
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onResetDemo();
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-[#DFE2EF] hover:bg-white/[0.05] transition-colors"
+                    disabled={isResettingDemoData}
+                    onClick={onResetDemo}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-[#DFE2EF] hover:bg-white/[0.05] transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <RotateCcw className="w-4 h-4 text-[#C3F400]" />
-                    Reset Demo Data
+                    {isResettingDemoData ? (
+                      <LoaderCircle className="w-4 h-4 animate-spin text-[#C3F400]" />
+                    ) : (
+                      <RotateCcw className="w-4 h-4 text-[#C3F400]" />
+                    )}
+                    {isResettingDemoData ? 'Resetting demo data...' : 'Reset Demo Data'}
                   </button>
                 )}
                 <button
@@ -149,24 +165,33 @@ export function TopNav({
         <button
           type="button"
           onClick={() => onSelectView('attendance')}
-          className={`flex-1 py-2 px-3 rounded text-xs font-semibold transition-colors whitespace-nowrap ${
+          className={`flex-1 min-w-0 py-2 px-1 rounded text-[10px] leading-tight font-semibold transition-colors ${
             activeView === 'attendance'
               ? 'bg-[#E62020] text-white'
               : 'bg-[#141925] text-[#9AA7B8]'
           }`}
         >
-          Attendance &amp; Check-In
+          Check-In
         </button>
         <button
           type="button"
           onClick={() => onSelectView('directory')}
-          className={`flex-1 py-2 px-3 rounded text-xs font-semibold transition-colors whitespace-nowrap ${
+          className={`flex-1 min-w-0 py-2 px-1 rounded text-[10px] leading-tight font-semibold transition-colors ${
             activeView === 'directory'
               ? 'bg-[#E62020] text-white'
               : 'bg-[#141925] text-[#9AA7B8]'
           }`}
         >
-          Member Directory
+          Members
+        </button>
+        <button
+          type="button"
+          disabled
+          title="Assessment is coming soon"
+          aria-label="Assessment (coming soon)"
+          className="flex-1 min-w-0 py-2 px-1 rounded text-[10px] leading-tight font-semibold bg-[#141925] text-[#64748B] opacity-60 cursor-not-allowed"
+        >
+          Assessment <span className="block text-[9px] font-normal">Soon</span>
         </button>
       </div>
     </header>

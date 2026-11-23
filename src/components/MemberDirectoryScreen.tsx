@@ -1,18 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  ChartNoAxesCombined,
   Check,
-  CheckSquare,
+  ChevronDown,
   Clock,
   Edit3,
-  MessageCircle,
   MessageSquare,
+  LoaderCircle,
   Search,
   Send,
   UserPlus,
   Users,
   X,
-  Zap,
 } from 'lucide-react';
 import { Member, OutreachDispatchBanner } from '../types/portal';
 import { MemberAvatar } from './MemberAvatar';
@@ -21,6 +21,11 @@ interface MemberDirectoryScreenProps {
   members: Member[];
   outreachTemplate: string;
   latestDispatch: OutreachDispatchBanner | null;
+  outreachTemplateSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  sendingOutreach: {
+    memberIds: string[];
+    channel: 'WhatsApp' | 'SMS';
+  } | null;
   onUpdateTemplate: (value: string) => void;
   onDismissDispatch: () => void;
   onSendOutreach: (memberIds: string[], channel: 'WhatsApp' | 'SMS') => void;
@@ -34,6 +39,8 @@ export function MemberDirectoryScreen({
   members,
   outreachTemplate,
   latestDispatch,
+  outreachTemplateSaveStatus,
+  sendingOutreach,
   onUpdateTemplate,
   onDismissDispatch,
   onSendOutreach,
@@ -44,6 +51,7 @@ export function MemberDirectoryScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editingTemplate, setEditingTemplate] = useState(false);
+  const [outreachTemplateOpen, setOutreachTemplateOpen] = useState(false);
 
   const stats = useMemo(() => {
     const total = members.length;
@@ -57,7 +65,6 @@ export function MemberDirectoryScreen({
       atRiskCount: atRiskList.length,
       inactiveCount: inactiveList.length,
       activePct,
-      atRiskIds: atRiskList.map((m) => m.id),
     };
   }, [members]);
 
@@ -75,6 +82,10 @@ export function MemberDirectoryScreen({
   }, [members, searchQuery, statusFilter]);
 
   const visibleIds = filteredMembers.map((m) => m.id);
+  const selectedMember =
+    selectedIds.length === 1
+      ? members.find((member) => member.id === selectedIds[0]) ?? null
+      : null;
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
 
@@ -92,13 +103,24 @@ export function MemberDirectoryScreen({
     }
   };
 
-  const handleSelectAtRiskBatch = () => {
-    setStatusFilter('at_risk');
-    setSelectedIds(stats.atRiskIds);
-  };
+  const batchOutreachTargets = selectedIds;
 
-  const batchOutreachTargets =
-    selectedIds.length > 0 ? selectedIds : stats.atRiskIds;
+  useEffect(() => {
+    if (!outreachTemplateOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOutreachTemplateOpen(false);
+        setEditingTemplate(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [outreachTemplateOpen]);
+
+  const closeOutreachTemplate = () => {
+    setOutreachTemplateOpen(false);
+    setEditingTemplate(false);
+  };
 
   const renderHighlightedTemplate = (raw: string) => {
     const parts = raw.split(/(\[First Name\]|DANNY'STHENICS)/g);
@@ -256,158 +278,37 @@ export function MemberDirectoryScreen({
         </div>
       </section>
 
-      {/* Automated Retention Outreach Spotlight */}
-      <section
-        aria-labelledby="retention-engine-heading"
-        className="rounded-lg border border-white/[0.10] bg-gradient-to-r from-[#161A26] via-[#151D26] to-[#122026] p-5 sm:p-6"
-      >
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          {/* Left Narrative */}
-          <div className="lg:col-span-6 flex items-start gap-4">
-            <div className="w-11 h-11 rounded-md bg-[#E62020]/15 border border-[#E62020]/40 text-[#EF233C] flex items-center justify-center shrink-0 mt-0.5">
-              <Zap className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#F87171] bg-[#E62020]/15 border border-[#E62020]/30 px-2 py-0.5 rounded">
-                  Member Follow-Up
-                </span>
-                <span className="text-[#9AA7B8]">Personal messages</span>
-              </div>
-              <h2
-                id="retention-engine-heading"
-                className="mt-2.5 font-display text-xl sm:text-2xl font-bold text-[#DFE2EF]"
-              >
-                {stats.atRiskCount} members may need a check-in
-              </h2>
-              <p className="mt-2 text-sm text-[#9AA7B8] leading-relaxed max-w-xl">
-                {stats.atRiskCount > 0
-                  ? "These members haven't visited in 8–30 days. Send a friendly message to invite them back."
-                  : "Members who haven't visited in 8–30 days will appear here. Send them a friendly message to invite them back."}
-              </p>
-            </div>
+      {/* Roster Filters and Actions */}
+      <section className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2.5">
+          <div className="relative min-w-[170px] flex-1 sm:flex-none sm:w-48">
+            <label htmlFor="member-status-filter" className="sr-only">
+              Filter members by status
+            </label>
+            <select
+              id="member-status-filter"
+              value={statusFilter}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (
+                  value === 'all' ||
+                  value === 'active' ||
+                  value === 'at_risk' ||
+                  value === 'inactive'
+                ) {
+                  setStatusFilter(value);
+                }
+              }}
+              className="h-10 w-full appearance-none rounded-md border border-white/10 bg-[#121622] pl-3.5 pr-9 text-sm text-[#DFE2EF] focus:border-white/25 focus:outline-none crimson-focus"
+            >
+              <option value="all">All Members</option>
+              <option value="active">Active</option>
+              <option value="at_risk">Needs Follow-Up</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9AA7B8]" />
           </div>
 
-          {/* Right Template Preview & 1-Click Dispatch */}
-          <div className="lg:col-span-6 rounded-md border border-white/[0.08] bg-[#0D121D] p-4 sm:p-5 space-y-3.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-[#4EDEA3]">
-                <MessageSquare className="w-3.5 h-3.5" />
-                WhatsApp / SMS Template Preview
-              </span>
-              <div className="flex items-center gap-3">
-                <span className="font-mono text-[11px] text-[#9AA7B8]">
-                  Tokenized: [First Name]
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setEditingTemplate((prev) => !prev)}
-                  className="inline-flex items-center gap-1 font-mono text-[11px] text-[#DFE2EF] hover:text-[#4EDEA3] transition-colors"
-                >
-                  <Edit3 className="w-3 h-3" />
-                  {editingTemplate ? 'Done' : 'Edit'}
-                </button>
-              </div>
-            </div>
-
-            {editingTemplate ? (
-              <textarea
-                rows={3}
-                value={outreachTemplate}
-                onChange={(e) => onUpdateTemplate(e.target.value)}
-                className="w-full rounded bg-[#141B2B] border border-[#10B981]/40 p-3 text-xs sm:text-sm text-[#DFE2EF] leading-relaxed kinetic-focus"
-              />
-            ) : (
-              <div className="rounded bg-[#141B2B] border border-white/[0.07] p-3.5 text-xs sm:text-sm text-[#CBD5E1] leading-relaxed">
-                &ldquo;{renderHighlightedTemplate(outreachTemplate)}&rdquo;
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <span className="text-xs text-[#9AA7B8]">
-                Recipients:{' '}
-                <strong className="font-mono tabular-nums text-[#DFE2EF]">
-                  {batchOutreachTargets.length}{' '}
-                  {selectedIds.length > 0 ? 'Selected' : 'At-Risk'} Members
-                </strong>
-              </span>
-              <button
-                type="button"
-                disabled={batchOutreachTargets.length === 0}
-                onClick={() => onSendOutreach(batchOutreachTargets, 'WhatsApp')}
-                className="px-4 py-2.5 rounded bg-[#E62020] hover:bg-[#EF3333] disabled:opacity-45 text-white text-xs sm:text-sm font-semibold inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 crimson-focus"
-              >
-                <Send className="w-3.5 h-3.5" />
-                Send 1-Click WhatsApp/SMS Outreach ({batchOutreachTargets.length})
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Filter Tabs & Search Actions Bar */}
-      <section className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        {/* Segmented Status Tabs */}
-        <div
-          role="tablist"
-          aria-label="Filter members by activity status"
-          className="flex flex-wrap items-center gap-2"
-        >
-          {(
-            [
-              {
-                key: 'all',
-                label: 'All Members',
-                count: stats.total,
-                accent: 'text-[#DFE2EF]',
-              },
-              {
-                key: 'active',
-                label: 'Active',
-                count: stats.activeCount,
-                accent: 'text-[#4EDEA3]',
-              },
-              {
-                key: 'at_risk',
-                label: 'Inactive: 1–2 Weeks',
-                count: stats.atRiskCount,
-                accent: 'text-[#C3F400]',
-              },
-              {
-                key: 'inactive',
-                label: 'Inactive: 1 Month+',
-                count: stats.inactiveCount,
-                accent: 'text-[#FCA5A5]',
-              },
-            ] as const
-          ).map((tab) => {
-            const isActive = statusFilter === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setStatusFilter(tab.key)}
-                className={`h-10 px-3.5 rounded-md border text-xs sm:text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${
-                  isActive
-                    ? 'bg-[#1C2334] border-white/20 text-white font-semibold'
-                    : 'bg-[#121622] border-white/[0.06] text-[#9AA7B8] hover:text-[#DFE2EF] hover:border-white/15'
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span
-                  className={`font-mono text-xs tabular-nums px-1.5 py-0.5 rounded bg-[#0A0E17] ${tab.accent}`}
-                >
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Search + Bulk Select + Add Member */}
-        <div className="flex flex-wrap items-center gap-2.5">
           <div className="relative flex-1 sm:flex-none sm:w-64">
             <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -419,14 +320,45 @@ export function MemberDirectoryScreen({
               className="w-full h-10 pl-9 pr-3 rounded-md bg-[#121622] border border-white/10 text-sm text-[#DFE2EF] placeholder:text-[#64748B] kinetic-focus"
             />
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setOutreachTemplateOpen(true)}
+            title="Open WhatsApp / SMS outreach"
+            aria-label="Open WhatsApp / SMS outreach"
+            aria-haspopup="dialog"
+            aria-expanded={outreachTemplateOpen}
+            aria-busy={sendingOutreach !== null}
+            className="h-10 w-10 rounded-md border border-[#10B981]/35 bg-[#10B981]/10 text-[#4EDEA3] hover:bg-[#10B981]/20 inline-flex items-center justify-center transition-colors shrink-0"
+          >
+            {sendingOutreach ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : (
+              <MessageSquare className="h-4 w-4" />
+            )}
+          </button>
 
           <button
             type="button"
-            onClick={handleSelectAtRiskBatch}
-            className="h-10 px-3.5 rounded-md border border-white/15 bg-[#181E2C] hover:border-[#C3F400]/50 text-xs sm:text-sm font-medium text-[#DFE2EF] inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
+            disabled={!selectedMember}
+            onClick={() => {
+              if (selectedMember) onSelectHistoryMember(selectedMember.id);
+            }}
+            title={
+              selectedMember
+                ? `View workout analytics for ${selectedMember.name}`
+                : 'Select exactly one member to view workout analytics'
+            }
+            aria-label={
+              selectedMember
+                ? `View workout analytics for ${selectedMember.name}`
+                : 'Select exactly one member to view workout analytics'
+            }
+            className="h-10 w-10 rounded-md border border-white/10 bg-[#181E2C] text-[#9AA7B8] hover:border-[#60A5FA]/40 hover:text-[#60A5FA] inline-flex items-center justify-center transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <CheckSquare className="w-4 h-4 text-[#C3F400]" />
-            Select Inactive ({stats.atRiskCount})
+            <ChartNoAxesCombined className="h-4 w-4" />
           </button>
 
           <button
@@ -442,7 +374,7 @@ export function MemberDirectoryScreen({
       {/* Clean Member Roster Data Table */}
       <section className="rounded-lg border border-white/[0.08] bg-[#121622] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left min-w-[920px]">
+          <table className="w-full border-collapse text-left min-w-[880px]">
             <thead>
               <tr className="bg-[#0B0F19] border-b border-white/[0.08] font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-[#64748B]">
                 <th className="py-3.5 pl-5 pr-3 w-12">
@@ -461,19 +393,18 @@ export function MemberDirectoryScreen({
                     <Check className="w-3 h-3 stroke-[3]" />
                   </button>
                 </th>
-                <th className="py-3.5 px-3">Athlete / Member</th>
-                <th className="py-3.5 px-3">Contact Number</th>
-                <th className="py-3.5 px-3">Status &amp; Lull</th>
+                <th className="py-3.5 px-3">Member</th>
+                <th className="py-3.5 px-3">Status</th>
+                <th className="py-3.5 px-3">Age</th>
+                <th className="py-3.5 px-3">Gender</th>
                 <th className="py-3.5 px-3">Last Attended Session</th>
                 <th className="py-3.5 px-3 text-right">Cadence (Freq)</th>
-                <th className="py-3.5 px-3 text-center">1-Click Fast Outreach</th>
-                <th className="py-3.5 pl-3 pr-5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.06]">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 px-6 text-center">
+                  <td colSpan={7} className="py-12 px-6 text-center">
                     <p className="text-sm font-medium text-[#DFE2EF]">
                       No members match your current filter.
                     </p>
@@ -505,7 +436,9 @@ export function MemberDirectoryScreen({
                   const statusLabel =
                     member.status === 'active'
                       ? 'Active'
-                      : `Inactive (${member.daysSinceLastVisit} days)`;
+                      : member.status === 'at_risk'
+                        ? 'Needs Follow-Up'
+                        : 'Inactive';
 
                   const cadenceColor =
                     member.cadencePerWeek >= 3
@@ -554,16 +487,20 @@ export function MemberDirectoryScreen({
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-3 font-mono text-xs sm:text-sm tabular-nums text-[#CBD5E1] whitespace-nowrap">
-                        {member.phone}
-                      </td>
-
                       <td className="py-3.5 px-3">
                         <span
                           className={`inline-flex items-center px-2.5 py-1 rounded border font-mono text-[11px] font-medium whitespace-nowrap ${statusTone}`}
                         >
                           {statusLabel}
                         </span>
+                      </td>
+
+                      <td className="py-3.5 px-3 text-sm text-[#64748B] whitespace-nowrap">
+                        Not available
+                      </td>
+
+                      <td className="py-3.5 px-3 text-sm text-[#64748B] whitespace-nowrap">
+                        Not available
                       </td>
 
                       <td className="py-3.5 px-3">
@@ -586,38 +523,6 @@ export function MemberDirectoryScreen({
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-3">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onSendOutreach([member.id], 'WhatsApp')}
-                            title={`Send WhatsApp to ${member.name}`}
-                            aria-label={`Send WhatsApp outreach to ${member.name}`}
-                            className="w-9 h-9 rounded bg-[#1C2334] hover:bg-[#10B981]/20 border border-white/10 hover:border-[#10B981]/45 text-[#4EDEA3] inline-flex items-center justify-center transition-colors"
-                          >
-                            <MessageCircle className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onSendOutreach([member.id], 'SMS')}
-                            title={`Send SMS to ${member.name}`}
-                            aria-label={`Send SMS outreach to ${member.name}`}
-                            className="w-9 h-9 rounded bg-[#1C2334] hover:bg-white/10 border border-white/10 hover:border-white/30 text-[#DFE2EF] inline-flex items-center justify-center transition-colors"
-                          >
-                            <MessageSquare className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-
-                      <td className="py-3.5 pl-3 pr-5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => onSelectHistoryMember(member.id)}
-                          className="font-mono text-xs font-semibold uppercase tracking-wider text-[#4EDEA3] hover:text-[#6FFBEE] transition-colors whitespace-nowrap"
-                        >
-                          View History
-                        </button>
-                      </td>
                     </tr>
                   );
                 })
@@ -626,6 +531,143 @@ export function MemberDirectoryScreen({
           </table>
         </div>
       </section>
+
+      {outreachTemplateOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="outreach-template-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeOutreachTemplate();
+          }}
+        >
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-white/15 bg-[#131C2E] shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] bg-[#0D1422] px-5 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[#10B981]/35 bg-[#10B981]/10 text-[#4EDEA3]">
+                  <MessageSquare className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <h2
+                    id="outreach-template-title"
+                    className="font-display text-lg font-bold text-[#DFE2EF]"
+                  >
+                    WhatsApp / SMS Outreach
+                  </h2>
+                  {outreachTemplateSaveStatus !== 'idle' && (
+                    <span
+                      className={`inline-flex items-center gap-1 font-mono text-[10px] ${
+                        outreachTemplateSaveStatus === 'error'
+                          ? 'text-[#FCA5A5]'
+                          : 'text-[#9AA7B8]'
+                      }`}
+                      role="status"
+                    >
+                      {outreachTemplateSaveStatus === 'saving' ? (
+                        <>
+                          <LoaderCircle className="h-3 w-3 animate-spin" />
+                          Saving template...
+                        </>
+                      ) : outreachTemplateSaveStatus === 'saved' ? (
+                        <>
+                          <Check className="h-3 w-3" />
+                          Template saved
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="h-3 w-3" />
+                          Template save failed
+                        </>
+                      )}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingTemplate((prev) => !prev)}
+                  className="inline-flex items-center gap-1 rounded px-2.5 py-2 font-mono text-[11px] text-[#DFE2EF] hover:bg-white/[0.06] hover:text-[#4EDEA3] transition-colors"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  {editingTemplate ? 'Preview' : 'Edit'}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeOutreachTemplate}
+                  className="rounded p-1.5 text-[#9AA7B8] hover:bg-white/[0.06] hover:text-white"
+                  aria-label="Close outreach popup"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-mono font-semibold uppercase tracking-wider text-[#4EDEA3]">
+                  Message Template
+                </span>
+                <span className="font-mono text-[11px] text-[#9AA7B8]">
+                  Personalization token: [First Name]
+                </span>
+              </div>
+
+              {editingTemplate ? (
+                <textarea
+                  rows={5}
+                  autoFocus
+                  value={outreachTemplate}
+                  onChange={(event) => onUpdateTemplate(event.target.value)}
+                  aria-label="Edit WhatsApp and SMS outreach template"
+                  className="w-full rounded-md border border-[#10B981]/40 bg-[#141B2B] p-3 text-sm leading-relaxed text-[#DFE2EF] kinetic-focus"
+                />
+              ) : (
+                <div className="rounded-md border border-white/[0.07] bg-[#141B2B] p-4 text-sm leading-relaxed text-[#CBD5E1]">
+                  &ldquo;{renderHighlightedTemplate(outreachTemplate)}&rdquo;
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 border-t border-white/[0.08] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs text-[#9AA7B8]">
+                    Recipients:{' '}
+                    <strong className="font-mono tabular-nums text-[#DFE2EF]">
+                      {batchOutreachTargets.length} Selected Members
+                    </strong>
+                  </p>
+                  {selectedIds.length === 0 && (
+                    <p className="mt-1 text-[11px] text-[#64748B]">
+                      Select members in the table to send outreach.
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={
+                    batchOutreachTargets.length === 0 || sendingOutreach !== null
+                  }
+                  onClick={() =>
+                    onSendOutreach(batchOutreachTargets, 'WhatsApp')
+                  }
+                  aria-busy={sendingOutreach !== null}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-[#E62020] px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#EF3333] disabled:cursor-not-allowed disabled:opacity-45 crimson-focus"
+                >
+                  {sendingOutreach ? (
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Send className="h-3.5 w-3.5" />
+                  )}
+                  {sendingOutreach
+                    ? 'Sending outreach...'
+                    : `Send WhatsApp Outreach (${batchOutreachTargets.length})`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

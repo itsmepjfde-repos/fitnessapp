@@ -18,7 +18,16 @@ export default function App() {
     checkIns,
     queuedMemberIds,
     outreachTemplate,
+    outreachTemplateSaveStatus,
     latestDispatch,
+    loadingAttendanceDate,
+    confirmingBatchCheckIn,
+    confirmingBatchMemberCount,
+    pendingWorkoutTags,
+    removingCheckInId,
+    sendingOutreach,
+    addingMember,
+    resettingDemoData,
     toasts,
     dismissToast,
     setupCoach,
@@ -64,6 +73,7 @@ export default function App() {
             canResetDemo={authStatus?.storageMode === 'preview'}
             onSelectView={setActiveView}
             onResetDemo={resetDemoData}
+            isResettingDemoData={resettingDemoData}
             onSignOut={signOut}
           />
 
@@ -74,6 +84,10 @@ export default function App() {
                 members={members}
                 checkIns={checkIns}
                 queuedMemberIds={queuedMemberIds}
+                loadingAttendanceDate={loadingAttendanceDate}
+                confirmingBatchCheckIn={confirmingBatchCheckIn}
+                confirmingBatchMemberCount={confirmingBatchMemberCount}
+                removingCheckInId={removingCheckInId}
                 onSelectDate={loadAttendanceForDate}
                 onQueueMember={queueMember}
                 onUnqueueMember={unqueueMember}
@@ -86,7 +100,9 @@ export default function App() {
               <MemberDirectoryScreen
                 members={members}
                 outreachTemplate={outreachTemplate}
+                outreachTemplateSaveStatus={outreachTemplateSaveStatus}
                 latestDispatch={latestDispatch}
+                sendingOutreach={sendingOutreach}
                 onUpdateTemplate={setOutreachTemplate}
                 onDismissDispatch={dismissDispatchBanner}
                 onSendOutreach={sendOutreach}
@@ -117,13 +133,16 @@ export default function App() {
         open={addMemberOpen}
         onClose={() => setAddMemberOpen(false)}
         onAddMember={addNewMember}
+        isSubmitting={addingMember}
       />
 
       <MemberHistoryDrawer
         member={historyMember}
         onClose={() => setHistoryMemberId(null)}
         onSendOutreach={sendOutreach}
+        sendingOutreach={sendingOutreach}
         onToggleWorkoutTag={toggleWorkoutTag}
+        pendingWorkoutTags={pendingWorkoutTags}
         onJumpToAttendanceDate={(sessionDate) => {
           setActiveView('attendance');
           loadAttendanceForDate(sessionDate);
