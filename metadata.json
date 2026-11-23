@@ -1,0 +1,6 @@
+{
+  "name": "DANNY'STHENICS — Coach Pro",
+  "description": "Calisthenics and conditioning coaching portal featuring Coach Login, Express QR Check-In, Member Directory & Retention Outreach, and Batch Attendance with live workout tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
