@@ -178,7 +178,7 @@ export function LoginScreen({
                     setEmail(e.target.value);
                     if (error) setError(null);
                   }}
-                  placeholder="coach.danny@dannysthenics.com"
+                  placeholder="danny@dannysthenics.com"
                   className="w-full h-11 pl-10 pr-3.5 rounded bg-[#232938] border border-white/[0.09] text-sm font-mono text-[#DFE2EF] placeholder:text-[#64748B] focus:border-[#10B981]/70 kinetic-focus transition-colors"
                 />
               </div>
