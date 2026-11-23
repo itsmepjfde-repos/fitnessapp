@@ -25,11 +25,11 @@ each environment you plan to deploy (Production, Preview, and/or Development):
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `MYSQL_HOST` | Yes | Reachable MySQL/TiDB host |
-| `MYSQL_PORT` | No | Defaults to `3306` |
+| `MYSQL_PORT` | No | Defaults to `3306` for MySQL; use `4000` for the TiDB Cloud endpoint configured for this project |
 | `MYSQL_USER` | Yes | Database user |
 | `MYSQL_PASSWORD` | As required by your database | Never add credentials to source control |
 | `MYSQL_DATABASE` | No | Defaults to `dannysthenics` |
-| `MYSQL_SSL` | No | Set to `true` when the database requires TLS; enabled automatically for TiDB Cloud hosts |
+| `MYSQL_SSL` | No | Set to `true` when the database requires TLS; required for TiDB Cloud Starter/Essential |
 | `JWT_SECRET` | Yes | Use a unique random value of at least 16 characters |
 | `COACH_ADMIN_PASSWORD` | No | Optional server-side admin passcode override |
 
