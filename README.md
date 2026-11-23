@@ -31,7 +31,7 @@ each environment you plan to deploy (Production, Preview, and/or Development):
 | `MYSQL_DATABASE` | No | Defaults to `dannysthenics` |
 | `MYSQL_SSL` | No | Set to `true` when the database requires TLS; required for TiDB Cloud Starter/Essential |
 | `JWT_SECRET` | Yes | Use a unique random value of at least 16 characters |
-| `COACH_ADMIN_PASSWORD` | No | Optional server-side admin passcode override |
+| `COACH_ADMIN_PASSWORD` | No | Optional shared admin login override. When set, it replaces SQL account password login until unset. |
 
 Vercel API startup checks for `MYSQL_HOST`, `MYSQL_USER`, and a valid
 `JWT_SECRET`. This prevents a deployment from silently using temporary preview

@@ -680,7 +680,8 @@ export class PreviewPortalRepository implements PortalRepository {
   ): Promise<CoachAccount | null> {
     const cleanEmail = email.trim().toLowerCase();
     const envPass = process.env.COACH_ADMIN_PASSWORD?.trim();
-    if (envPass && safeEqualSecret(password, envPass)) {
+    if (envPass) {
+      if (!safeEqualSecret(password, envPass)) return null;
       return {
         id: 'env-admin',
         email: cleanEmail,
