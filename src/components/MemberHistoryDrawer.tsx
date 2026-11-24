@@ -350,14 +350,23 @@ export function MemberHistoryDrawer({
                           {row.counts.map((count, index) => (
                             <td key={weeklyTraining.days[index].date} className="p-1">
                               <span
-                                aria-label={`${count} ${row.label} visits on ${weeklyTraining.days[index].date}`}
-                                className={`flex h-8 items-center justify-center rounded font-mono text-[11px] font-bold tabular-nums ${
+                                role="img"
+                                aria-label={
+                                  count > 0
+                                    ? `${row.label} completed on ${weeklyTraining.days[index].date}`
+                                    : `No ${row.label} recorded on ${weeklyTraining.days[index].date}`
+                                }
+                                className={`flex h-8 items-center justify-center rounded ${
                                   count > 0
                                     ? WORKOUT_COLORS[row.key]
                                     : 'bg-[#161D2E] text-[#64748B]'
                                 }`}
                               >
-                                {count > 0 ? count : '—'}
+                                {count > 0 ? (
+                                  <Check className="h-4 w-4 stroke-[3]" />
+                                ) : (
+                                  <span aria-hidden="true">—</span>
+                                )}
                               </span>
                             </td>
                           ))}
@@ -367,8 +376,7 @@ export function MemberHistoryDrawer({
                   </table>
                 </div>
                 <p className="mt-2 text-[10px] text-[#64748B]">
-                  Counts show visits tagged with each workout type; a visit can
-                  include more than one type.
+                  A check mark means that workout was recorded for the day.
                 </p>
               </>
             )}
