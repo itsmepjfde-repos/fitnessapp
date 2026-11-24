@@ -389,6 +389,7 @@ export function usePortalStore() {
     async (
       checkInId: string,
       workouts: Record<WorkoutKey, boolean>,
+      notify = true,
     ): Promise<boolean> => {
       try {
         const res = await apiFetch<{ checkIn: CheckInEntry }>(
@@ -415,17 +416,21 @@ export function usePortalStore() {
               : m,
           ),
         );
-        pushToast({
-          title: 'Workouts saved',
-          tone: 'emerald',
-        });
+        if (notify) {
+          pushToast({
+            title: 'Workouts saved',
+            tone: 'emerald',
+          });
+        }
         return true;
       } catch (err) {
-        pushToast({
-          title: 'Could not save workouts',
-          detail: err instanceof Error ? err.message : 'Please try again.',
-          tone: 'crimson',
-        });
+        if (notify) {
+          pushToast({
+            title: 'Could not save workouts',
+            detail: err instanceof Error ? err.message : 'Please try again.',
+            tone: 'crimson',
+          });
+        }
         return false;
       }
     },

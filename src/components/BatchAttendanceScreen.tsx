@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
   Check,
@@ -42,6 +42,7 @@ interface BatchAttendanceScreenProps {
   onSaveWorkouts: (
     checkInId: string,
     workouts: Record<WorkoutKey, boolean>,
+    notify?: boolean,
   ) => Promise<boolean>;
   onRemoveCheckIn: (checkInId: string) => void;
 }
@@ -88,7 +89,16 @@ export function BatchAttendanceScreen({
   const [workoutDrafts, setWorkoutDrafts] = useState<
     Record<string, Record<WorkoutKey, boolean>>
   >({});
-  const [savingCheckInId, setSavingCheckInId] = useState<string | null>(null);
+  const [savingCheckInIds, setSavingCheckInIds] = useState<string[]>([]);
+  const [bulkSaveInProgress, setBulkSaveInProgress] = useState(false);
+  const [bulkSaveCount, setBulkSaveCount] = useState(0);
+  const [bulkSaveResult, setBulkSaveResult] = useState<{
+    saved: number;
+    total: number;
+    failedMembers: string[];
+  } | null>(null);
+  const workoutSaveLocks = useRef(new Set<string>());
+  const bulkSaveLock = useRef(false);
   const getIstTimeInput = () =>
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Asia/Kolkata',
@@ -199,6 +209,10 @@ export function BatchAttendanceScreen({
       );
   }, [checkIns, memberMap, workoutDrafts]);
 
+  const dirtyCheckIns = enrichedCheckIns.filter(
+    ({ hasUnsavedWorkouts }) => hasUnsavedWorkouts,
+  );
+
   const handleScanSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (searchSuggestions.length > 0) {
@@ -241,6 +255,7 @@ export function BatchAttendanceScreen({
   };
 
   const handleToggleWorkout = (entry: CheckInEntry, workout: WorkoutKey) => {
+    setBulkSaveResult(null);
     setWorkoutDrafts((prev) => {
       const current = prev[entry.id] ?? entry.workouts;
       const updated = { ...current, [workout]: !current[workout] };
@@ -257,18 +272,68 @@ export function BatchAttendanceScreen({
   const handleSaveWorkouts = async (
     checkInId: string,
     workouts: Record<WorkoutKey, boolean>,
-  ) => {
-    setSavingCheckInId(checkInId);
+    notify = true,
+  ): Promise<boolean> => {
+    if (workoutSaveLocks.current.has(checkInId)) return false;
+    workoutSaveLocks.current.add(checkInId);
+    setSavingCheckInIds((prev) => [...prev, checkInId]);
     try {
-      if (await onSaveWorkouts(checkInId, workouts)) {
+      if (await onSaveWorkouts(checkInId, workouts, notify)) {
         setWorkoutDrafts((prev) => {
           const next = { ...prev };
           delete next[checkInId];
           return next;
         });
+        return true;
       }
+      return false;
     } finally {
-      setSavingCheckInId(null);
+      workoutSaveLocks.current.delete(checkInId);
+      setSavingCheckInIds((prev) => prev.filter((id) => id !== checkInId));
+    }
+  };
+
+  const handleSaveAllWorkouts = async () => {
+    if (bulkSaveLock.current || dirtyCheckIns.length < 2) return;
+    const pending = dirtyCheckIns.filter(
+      ({ entry }) => !workoutSaveLocks.current.has(entry.id),
+    );
+    if (pending.length < 2) return;
+
+    bulkSaveLock.current = true;
+    setBulkSaveInProgress(true);
+    setBulkSaveCount(pending.length);
+    setBulkSaveResult(null);
+    setSavingCheckInIds((prev) => [
+      ...new Set([...prev, ...pending.map(({ entry }) => entry.id)]),
+    ]);
+
+    try {
+      const results = await Promise.all(
+        pending.map(async ({ entry, member, workouts }) => ({
+          memberName: member.name,
+          saved: await handleSaveWorkouts(entry.id, workouts, false).catch(
+            () => false,
+          ),
+        })),
+      );
+      const saved = results.filter((result) => result.saved).length;
+      const failedMembers = results
+        .filter((result) => !result.saved)
+        .map((result) => result.memberName);
+      setBulkSaveResult({
+        saved,
+        total: pending.length,
+        failedMembers,
+      });
+    } finally {
+      bulkSaveLock.current = false;
+      setBulkSaveInProgress(false);
+      setSavingCheckInIds((prev) =>
+        prev.filter(
+          (id) => !pending.some(({ entry }) => entry.id === id),
+        ),
+      );
     }
   };
 
@@ -617,11 +682,30 @@ export function BatchAttendanceScreen({
               </p>
             </div>
 
-            <div
-              role="group"
-              aria-label="Export attendance"
-              className="inline-flex items-center gap-2 self-start xl:self-auto no-print"
-            >
+            <div className="flex items-center gap-3 self-start xl:self-auto no-print">
+              {dirtyCheckIns.length > 1 && (
+                <button
+                  type="button"
+                  disabled={bulkSaveInProgress || savingCheckInIds.length > 0}
+                  onClick={() => void handleSaveAllWorkouts()}
+                  aria-busy={bulkSaveInProgress}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#10B981]/35 bg-[#10B981]/10 px-3 text-xs font-semibold text-[#4EDEA3] transition-colors hover:bg-[#10B981]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {bulkSaveInProgress ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {bulkSaveInProgress
+                    ? `Saving ${bulkSaveCount}...`
+                    : `Save All (${dirtyCheckIns.length})`}
+                </button>
+              )}
+              <div
+                role="group"
+                aria-label="Export attendance"
+                className="inline-flex items-center gap-2"
+              >
               <button
                 type="button"
                 onClick={handleExportCsv}
@@ -640,8 +724,25 @@ export function BatchAttendanceScreen({
               >
                 <Printer className="h-4 w-4" />
               </button>
+              </div>
             </div>
           </div>
+
+          {bulkSaveResult && (
+            <p
+              className={`border-b border-white/[0.08] px-5 py-2.5 text-xs ${
+                bulkSaveResult.failedMembers.length > 0
+                  ? 'text-[#FCA5A5]'
+                  : 'text-[#4EDEA3]'
+              }`}
+              role="status"
+              aria-live="polite"
+            >
+              {bulkSaveResult.failedMembers.length === 0
+                ? `Saved workout changes for ${bulkSaveResult.saved} ${bulkSaveResult.saved === 1 ? 'member' : 'members'}.`
+                : `Saved ${bulkSaveResult.saved} of ${bulkSaveResult.total}. Could not save: ${bulkSaveResult.failedMembers.join(', ')}. Their changes remain available to retry.`}
+            </p>
+          )}
 
           {/* Checked-In Roster Table */}
           <div className="overflow-x-auto">
@@ -705,7 +806,7 @@ export function BatchAttendanceScreen({
                               <button
                                 key={key}
                                 type="button"
-                                disabled={savingCheckInId === entry.id}
+                                disabled={savingCheckInIds.includes(entry.id)}
                                 aria-pressed={active}
                                 onClick={() => handleToggleWorkout(entry, key)}
                                 className={`h-8 px-2.5 rounded text-xs font-medium inline-flex items-center gap-1.5 transition-all duration-150 whitespace-nowrap shrink-0 disabled:opacity-60 disabled:cursor-not-allowed ${
@@ -729,7 +830,7 @@ export function BatchAttendanceScreen({
                             type="button"
                             disabled={
                               !hasUnsavedWorkouts ||
-                              savingCheckInId !== null ||
+                              savingCheckInIds.length > 0 ||
                               removingCheckInId === entry.id
                             }
                             onClick={() =>
@@ -744,14 +845,14 @@ export function BatchAttendanceScreen({
                             className="h-9 px-2.5 rounded font-mono text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap border border-[#10B981]/35 bg-[#10B981]/10 text-[#4EDEA3] hover:bg-[#10B981]/20 disabled:border-white/10 disabled:bg-[#1B2130] disabled:text-[#64748B] disabled:cursor-not-allowed"
                           >
                             <Save className="w-3.5 h-3.5" />
-                            {savingCheckInId === entry.id ? 'Saving' : 'Save'}
+                            {savingCheckInIds.includes(entry.id) ? 'Saving' : 'Save'}
                           </button>
 
                           <button
                             type="button"
                             disabled={
                               removingCheckInId !== null ||
-                              savingCheckInId === entry.id
+                              savingCheckInIds.includes(entry.id)
                             }
                             onClick={() => onRemoveCheckIn(entry.id)}
                             aria-busy={removingCheckInId === entry.id}
